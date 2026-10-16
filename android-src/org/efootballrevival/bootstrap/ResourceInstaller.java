@@ -13,7 +13,7 @@ import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-/** Android-independent resource installer. The embedded manifest is the complete write allowlist. */
+/** Android-independent resource installer. The selected manifest is the complete write allowlist. */
 public final class ResourceInstaller {
     public interface Listener { void progress(String stage, String detail, long done, long total); }
     public interface ConnectionFactory { HttpURLConnection open(URL url) throws IOException; }
@@ -31,16 +31,21 @@ public final class ResourceInstaller {
     }
 
     public static final class Pack {
-        public final String name, sha256;
+        public final String name, sha256, url;
+        public final boolean allowSubset;
         public final long bytes;
         public final List<Entry> entries;
         public Pack(String name, long bytes, String sha256, List<Entry> entries) {
+            this(name, bytes, sha256, entries, null, false);
+        }
+        public Pack(String name, long bytes, String sha256, List<Entry> entries, String url, boolean allowSubset) {
             if (name == null || !name.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,119}\\.zip"))
                 throw new IllegalArgumentException("资源包名称无效");
             validateHash(sha256);
             if (bytes <= 0 || entries == null || entries.isEmpty())
                 throw new IllegalArgumentException("资源包清单为空或大小无效");
             this.name = name; this.bytes = bytes; this.sha256 = sha256;
+            this.url = url; this.allowSubset = allowSubset;
             this.entries = Collections.unmodifiableList(new ArrayList<Entry>(entries));
         }
     }
@@ -129,8 +134,13 @@ public final class ResourceInstaller {
     }
 
     public void install() throws IOException {
+        install(false);
+    }
+
+    /** Full content verification is used for a resource update, never on every ordinary launch. */
+    public void install(boolean forceVerify) throws IOException {
         report("检查", "正在检查已安装资源", 0, manifest.entries.size());
-        if (isReady()) { report("完成", "资源已就绪", 1, 1); return; }
+        if (!forceVerify && isReady()) { report("完成", "资源已就绪", 1, 1); return; }
         delete(marker);
         // A process kill bypasses extraction's finally block. Only reclaim staging files derived
         // from this embedded manifest; never enumerate or remove game data or saves.
@@ -185,24 +195,42 @@ public final class ResourceInstaller {
     }
 
     File download(Pack pack, int index) throws IOException {
-        File archive = stateFile(pack.name), part = stateFile(pack.name + ".part");
-        File resume = stateFile(pack.name + ".resume");
-        String detail = index + "/" + manifest.packs.size() + " " + pack.name;
+        URL address = pack.url == null ? new URL(baseUrl, pack.name) : new URL(pack.url);
+        return downloadContent(pack.name, pack.bytes, pack.sha256, address,
+                index + "/" + manifest.packs.size() + " " + pack.name);
+    }
+
+    /** Downloads an APK with the same resumable transport and mandatory complete SHA-256 check. */
+    public File downloadArtifact(String name, long bytes, String sha256, String url) throws IOException {
+        if (name == null || !name.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,119}\\.apk") || bytes <= 0)
+            throw new IOException("安装包名称或大小无效");
+        try { validateHash(sha256); }
+        catch (IllegalArgumentException invalid) { throw new IOException(invalid.getMessage(), invalid); }
+        long cached = Math.min(bytes, Math.max(stateFile(name).length(), stateFile(name + ".part").length()));
+        if (space.available(root) < bytes - cached + RESERVE) throw new IOException("下载更新所需空间不足");
+        return downloadContent(name, bytes, sha256, new URL(url), "应用更新");
+    }
+
+    private File downloadContent(String name, long bytes, String sha256, URL address, String detail) throws IOException {
+        validateUrl(address);
+        File archive = stateFile(name), part = stateFile(name + ".part");
+        File resume = stateFile(name + ".resume");
         if (archive.isFile()) {
-            if (archive.length() == pack.bytes && pack.sha256.equals(hash(archive, "校验", detail, 0, pack.bytes)))
+            if (archive.length() == bytes && sha256.equals(hash(archive, "校验", detail, 0, bytes)))
                 return archive;
             delete(archive);
         }
-        URL address = new URL(baseUrl, pack.name);
-        String expected = manifest.identity + ":" + pack.sha256 + ":" + pack.bytes + ":" + address;
+        String expected = "resource-content-v2:" + sha256 + ":" + bytes;
         Properties saved = readProperties(resume);
         String etag = saved.getProperty("etag", "");
-        if (!expected.equals(saved.getProperty("identity")) || part.length() > pack.bytes
-                || (part.length() > 0 && !strongEtag(etag))) {
+        String previous = saved.getProperty("identity", "");
+        // Old clients bound a partial to the whole manifest/URL. Only the archive content matters.
+        boolean legacy = previous.matches("[0-9a-f]{64}:" + sha256 + ":" + bytes + ":https://.+");
+        if ((!expected.equals(previous) && !legacy) || part.length() > bytes) {
             delete(part); delete(resume); etag = "";
         }
-        if (part.isFile() && part.length() == pack.bytes) {
-            if (pack.sha256.equals(hash(part, "校验", detail, 0, pack.bytes))) {
+        if (part.isFile() && part.length() == bytes) {
+            if (sha256.equals(hash(part, "校验", detail, 0, bytes))) {
                 atomicMove(part, archive); delete(resume); return archive;
             }
             delete(part); delete(resume); etag = "";
@@ -215,19 +243,20 @@ public final class ResourceInstaller {
                 int code = connection.getResponseCode();
                 String responseEtag = connection.getHeaderField("ETag");
                 boolean append = offset > 0 && code == 206
-                        && etag.equals(responseEtag) && validRange(connection.getHeaderField("Content-Range"), offset, pack.bytes)
-                        && expectedLength(connection, pack.bytes - offset);
+                        && (!strongEtag(etag) || !strongEtag(responseEtag) || etag.equals(responseEtag))
+                        && validRange(connection.getHeaderField("Content-Range"), offset, bytes)
+                        && expectedLength(connection, bytes - offset);
                 if (offset > 0 && !append) {
                     // A 200 means If-Range failed or the server ignored Range; consume its complete representation.
                     if (code != 200) {
                         if (code != 206 && code != 416)
-                            throw new IOException("下载暂时失败（HTTP " + code + "），已保留续传数据：" + pack.name);
+                            throw new IOException("下载暂时失败（HTTP " + code + "），已保留续传数据：" + name);
                         delete(part); delete(resume); etag = ""; continue;
                     }
                     offset = 0;
                 }
-                if ((!append && code != 200) || !expectedLength(connection, pack.bytes - offset))
-                    throw new IOException("下载响应异常（HTTP " + code + "）：" + pack.name);
+                if ((!append && code != 200) || !expectedLength(connection, bytes - offset))
+                    throw new IOException("下载响应异常（HTTP " + code + "）：" + name);
                 String encoding = connection.getHeaderField("Content-Encoding");
                 if (encoding != null && !encoding.isEmpty() && !encoding.equalsIgnoreCase("identity"))
                     throw new IOException("下载服务器返回了不支持的压缩传输");
@@ -240,24 +269,24 @@ public final class ResourceInstaller {
                 long count = offset;
                 try (InputStream input = connection.getInputStream(); FileOutputStream output = new FileOutputStream(part, true)) {
                     byte[] buffer = new byte[BUFFER];
-                    report("下载", detail, count, pack.bytes);
+                    report("下载", detail, count, bytes);
                     int read;
                     while ((read = input.read(buffer)) != -1) {
-                        if (read > pack.bytes - count) throw new IOException("下载数据超过清单大小：" + pack.name);
+                        if (read > bytes - count) throw new IOException("下载数据超过清单大小：" + name);
                         output.write(buffer, 0, read); count += read;
-                        report("下载", detail, count, pack.bytes);
+                        report("下载", detail, count, bytes);
                     }
                     output.getFD().sync();
                 }
-                if (count != pack.bytes) throw new IOException("下载中断，重试将继续下载：" + pack.name);
-                if (!pack.sha256.equals(hash(part, "校验", detail, 0, pack.bytes))) {
+                if (count != bytes) throw new IOException("下载中断，重试将继续下载：" + name);
+                if (!sha256.equals(hash(part, "校验", detail, 0, bytes))) {
                     delete(part); delete(resume);
-                    throw new IOException("资源包 SHA-256 校验失败，请重试：" + pack.name);
+                    throw new IOException("资源包 SHA-256 校验失败，请重试：" + name);
                 }
                 atomicMove(part, archive); delete(resume); return archive;
             } finally { connection.disconnect(); }
         }
-        throw new IOException("服务器不支持安全续传，请重试：" + pack.name);
+        throw new IOException("服务器不支持安全续传，请重试：" + name);
     }
 
     private HttpURLConnection open(URL address, long offset, String etag) throws IOException {
@@ -270,7 +299,7 @@ public final class ResourceInstaller {
             connection.setRequestProperty("User-Agent", "eFootball-ResourceBootstrap/1");
             if (offset > 0) {
                 connection.setRequestProperty("Range", "bytes=" + offset + "-");
-                connection.setRequestProperty("If-Range", etag);
+                if (strongEtag(etag)) connection.setRequestProperty("If-Range", etag);
             }
             int code;
             try { code = connection.getResponseCode(); }
@@ -317,8 +346,16 @@ public final class ResourceInstaller {
             while ((member = input.getNextEntry()) != null) {
                 String path = member.getName();
                 Entry entry = allowed.get(path);
-                if (member.isDirectory() || entry == null || !seen.add(path))
+                try { validatePath(path); }
+                catch (IllegalArgumentException invalid) { throw new IOException("资源包包含非法路径：" + path, invalid); }
+                if (member.isDirectory() || !seen.add(path))
                     throw new IOException("资源包包含未声明或重复的路径：" + path);
+                if (entry == null) {
+                    if (!pack.allowSubset) throw new IOException("资源包包含未声明的路径：" + path);
+                    // A prior immutable archive may also contain files superseded by a newer pack.
+                    // Its complete SHA was checked before extraction; omitted members never write.
+                    input.closeEntry(); continue;
+                }
                 File destination = target(path);
                 if (member.getSize() != -1 && member.getSize() != entry.bytes)
                     throw new IOException("资源成员大小不符：" + path);
@@ -349,7 +386,7 @@ public final class ResourceInstaller {
                 } finally { delete(temporary); }
             }
         }
-        if (seen.size() != allowed.size()) throw new IOException("资源包缺少清单成员：" + pack.name);
+        if (!seen.containsAll(allowed.keySet())) throw new IOException("资源包缺少清单成员：" + pack.name);
         report("解压", detail, total, total);
     }
 

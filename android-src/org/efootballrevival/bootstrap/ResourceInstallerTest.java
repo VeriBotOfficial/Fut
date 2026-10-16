@@ -31,6 +31,15 @@ public final class ResourceInstallerTest {
         resumedSpaceAndKilledStageRecovery();
         hostAndRedirectBoundaries();
         incompleteZipRejected();
+        resourceUpdateDownloadsOnlyChangedPack();
+        forceVerifyRepairsSameLengthCorruption();
+        partialSurvivesManifestAndRepositoryUpdate();
+        legacyPartialMetadataSurvivesUpdate();
+        resumeWithoutEtagStillRequiresFinalHash();
+        changedArchiveDiscardsUnrelatedPartial();
+        subsetArchiveNeverInstallsSupersededFiles();
+        subsetArchiveRejectsUnsafePaths();
+        apkDownloadResumesAndVerifies();
         System.out.println("PASS " + tests + " test groups; " + assertions + " assertions");
     }
 
@@ -193,6 +202,124 @@ public final class ResourceInstallerTest {
                 new FakeFactory(Reply.ok(zip)), dir -> Long.MAX_VALUE);
         expectIo(() -> installer.install(), "ZIP missing declared member rejected");
         check(!installer.isReady(), "missing member cannot complete"); tests++;
+    }
+
+    private static void resourceUpdateDownloadsOnlyChangedPack() throws Exception {
+        Fixture f = fixture(); installer(f, new FakeFactory(Reply.ok(f.zip))).install();
+        byte[] replacement = bytes("newer-second-resource-data");
+        LinkedHashMap<String, byte[]> changes = new LinkedHashMap<String, byte[]>();
+        changes.put(f.entries.get(1).path, replacement); byte[] newZip = zip(changes);
+        ResourceInstaller.Entry changed = new ResourceInstaller.Entry(f.entries.get(1).path, replacement.length, sha(replacement));
+        ResourceInstaller.Pack oldSubset = new ResourceInstaller.Pack(f.pack.name, f.pack.bytes, f.pack.sha256,
+                Collections.singletonList(f.entries.get(0)), BASE + f.pack.name, true);
+        ResourceInstaller.Pack patch = new ResourceInstaller.Pack("changed-resource.zip", newZip.length, sha(newZip),
+                Collections.singletonList(changed), "https://github.com/maxlzyver/efootxi/releases/download/resources-v2/changed-resource.zip", false);
+        ResourceInstaller.Manifest update = new ResourceInstaller.Manifest("test.game", 311010101, "v2", Arrays.asList(oldSubset, patch));
+        FakeFactory factory = new FakeFactory(Reply.ok(newZip));
+        ResourceInstaller next = new ResourceInstaller(f.root, update, BASE, null, factory, dir -> Long.MAX_VALUE);
+        check(!next.isReady(), "updated resource manifest requires integrity check"); next.install();
+        check(factory.requests.size() == 1, "unchanged archive is not fetched for existing verified files");
+        check(factory.requests.get(0).getURL().toString().equals(patch.url), "new content uses explicit release URL");
+        check(Arrays.equals(read(new File(f.root, changed.path)), replacement), "only new resource replaces old bytes");
+        check(Arrays.equals(read(new File(f.root, f.entries.get(0).path)), bytes("first-resource")), "unchanged resource retained");
+        check(next.isReady(), "new resource manifest committed"); tests++;
+    }
+
+    private static void forceVerifyRepairsSameLengthCorruption() throws Exception {
+        Fixture f = fixture(); installer(f, new FakeFactory(Reply.ok(f.zip))).install();
+        byte[] corruption = bytes("first-resource"); corruption[0] ^= 1; writeResource(f, 0, corruption);
+        FakeFactory factory = new FakeFactory(Reply.ok(f.zip)); ResourceInstaller next = installer(f, factory);
+        check(next.isReady(), "ordinary cold launch preserves previous size-only readiness behavior");
+        next.install(true);
+        check(factory.requests.size() == 1, "explicit integrity check repairs same-length damage");
+        check(Arrays.equals(read(new File(f.root, f.entries.get(0).path)), bytes("first-resource")), "damaged file restored"); tests++;
+    }
+
+    private static void partialSurvivesManifestAndRepositoryUpdate() throws Exception {
+        Fixture f = fixture(); preparePartial(f, 27);
+        FakeFactory factory = new FakeFactory(Reply.range(f.zip, 27, "\"v1\""));
+        ResourceInstaller next = new ResourceInstaller(f.root, manifest("v2", f.pack),
+                "https://github.com/maxlzyver/efootxi/releases/download/resources-v2/", null, factory, dir -> Long.MAX_VALUE);
+        next.install();
+        check("bytes=27-".equals(factory.requests.get(0).getRequestProperty("Range")), "unchanged content resumes across manifest and repository changes");
+        check(next.isReady(), "resumed content is fully verified and deployed"); tests++;
+    }
+
+    private static void legacyPartialMetadataSurvivesUpdate() throws Exception {
+        Fixture f = fixture(); preparePartial(f, 29);
+        Properties old = new Properties(); old.setProperty("identity", f.manifest.identity + ":" + f.pack.sha256 + ":" + f.pack.bytes + ":" + BASE + f.pack.name);
+        old.setProperty("etag", "\"v1\"");
+        try (OutputStream output = new FileOutputStream(new File(f.root, "resource-bootstrap-state/resources-01.zip.resume"))) { old.store(output, "legacy"); }
+        FakeFactory factory = new FakeFactory(Reply.range(f.zip, 29, "\"v1\""));
+        new ResourceInstaller(f.root, manifest("v2", f.pack), BASE, null, factory, dir -> Long.MAX_VALUE).install();
+        check("bytes=29-".equals(factory.requests.get(0).getRequestProperty("Range")), "old client partial survives upgrade without restarting"); tests++;
+    }
+
+    private static void resumeWithoutEtagStillRequiresFinalHash() throws Exception {
+        Fixture f = fixture(); Reply broken = Reply.broken(f.zip, 32); broken.headers.remove("etag");
+        expectIo(() -> installer(f, new FakeFactory(broken)).install(), "unvalidated transfer interruption retained");
+        Reply range = Reply.range(f.zip, 32, "unused"); range.headers.remove("etag");
+        FakeFactory factory = new FakeFactory(range); installer(f, factory).install();
+        check("bytes=32-".equals(factory.requests.get(0).getRequestProperty("Range")), "hash-bound transfer resumes without ETag");
+        check(factory.requests.get(0).getRequestProperty("If-Range") == null, "no invalid If-Range header sent");
+        Fixture corrupt = fixture(); Reply brokenAgain = Reply.broken(corrupt.zip, 32); brokenAgain.headers.remove("etag");
+        expectIo(() -> installer(corrupt, new FakeFactory(brokenAgain)).install(), "prepare second interrupted transfer");
+        byte[] mixed = corrupt.zip.clone(); mixed[40] ^= 1;
+        Reply badRange = Reply.range(mixed, 32, "unused"); badRange.headers.remove("etag");
+        expectIo(() -> installer(corrupt, new FakeFactory(badRange)).install(), "mixed representation fails complete content hash");
+        check(!part(corrupt).exists(), "failed complete content is discarded"); tests++;
+    }
+
+    private static void changedArchiveDiscardsUnrelatedPartial() throws Exception {
+        Fixture f = fixture(); preparePartial(f, 24);
+        LinkedHashMap<String, byte[]> contents = new LinkedHashMap<String, byte[]>();
+        byte[] changed = bytes("replacement"); contents.put(f.entries.get(0).path, changed); byte[] zip = zip(contents);
+        ResourceInstaller.Entry entry = new ResourceInstaller.Entry(f.entries.get(0).path, changed.length, sha(changed));
+        ResourceInstaller.Pack replacement = new ResourceInstaller.Pack(f.pack.name, zip.length, sha(zip), Collections.singletonList(entry));
+        FakeFactory factory = new FakeFactory(Reply.ok(zip));
+        new ResourceInstaller(f.root, manifest("v2", replacement), BASE, null, factory, dir -> Long.MAX_VALUE).install();
+        check(factory.requests.get(0).getRequestProperty("Range") == null, "changed archive hash cannot reuse old bytes"); tests++;
+    }
+
+    private static void subsetArchiveNeverInstallsSupersededFiles() throws Exception {
+        Fixture f = fixture();
+        ResourceInstaller.Pack subset = new ResourceInstaller.Pack(f.pack.name, f.pack.bytes, f.pack.sha256,
+                Collections.singletonList(f.entries.get(0)), BASE + f.pack.name, true);
+        ResourceInstaller next = new ResourceInstaller(f.root, manifest("v2", subset), BASE, null,
+                new FakeFactory(Reply.ok(f.zip)), dir -> Long.MAX_VALUE);
+        next.install();
+        check(new File(f.root, f.entries.get(0).path).isFile(), "subset installs required unchanged content");
+        check(!new File(f.root, f.entries.get(1).path).exists(), "omitted obsolete member never written");
+        check(next.isReady(), "subset finishes after all declared members verified");
+        Fixture missing = fixture(); ResourceInstaller.Entry absent = new ResourceInstaller.Entry("Download/absent.bin", 1, sha(bytes("x")));
+        ResourceInstaller.Pack badSubset = new ResourceInstaller.Pack(missing.pack.name, missing.pack.bytes, missing.pack.sha256,
+                Collections.singletonList(absent), BASE + missing.pack.name, true);
+        expectIo(() -> new ResourceInstaller(missing.root, manifest("v2", badSubset), BASE, null,
+                new FakeFactory(Reply.ok(missing.zip)), dir -> Long.MAX_VALUE).install(), "subset still requires declared member presence"); tests++;
+    }
+
+    private static void subsetArchiveRejectsUnsafePaths() throws Exception {
+        Fixture f = fixture(); LinkedHashMap<String, byte[]> contents = new LinkedHashMap<String, byte[]>();
+        contents.put("assetpacks/../../outside", bytes("bad")); contents.put(f.entries.get(0).path, bytes("first-resource"));
+        byte[] zip = zip(contents); ResourceInstaller.Pack unsafe = new ResourceInstaller.Pack(f.pack.name, zip.length, sha(zip),
+                Collections.singletonList(f.entries.get(0)), BASE + f.pack.name, true);
+        expectIo(() -> new ResourceInstaller(f.root, manifest("v2", unsafe), BASE, null,
+                new FakeFactory(Reply.ok(zip)), dir -> Long.MAX_VALUE).install(), "skipped members still reject path traversal");
+        check(!new File(f.root, f.entries.get(0).path).exists(), "unsafe archive cannot deploy later members"); tests++;
+    }
+
+    private static void apkDownloadResumesAndVerifies() throws Exception {
+        Fixture f = fixture(); byte[] apk = bytes("APK-content-signed-elsewhere"); String hash = sha(apk);
+        String url = "https://github.com/maxlzyver/efootxi/releases/download/app-v3/efootxi.apk";
+        expectIo(() -> installer(f, new FakeFactory(Reply.broken(apk, 9))).downloadArtifact("update.apk", apk.length, hash, url), "APK interrupted download retained");
+        FakeFactory factory = new FakeFactory(Reply.range(apk, 9, "\"v1\""));
+        ResourceInstaller next = installer(f, factory); File result = next.downloadArtifact("update.apk", apk.length, hash, url);
+        check("bytes=9-".equals(factory.requests.get(0).getRequestProperty("Range")), "APK uses persistent range resume");
+        check(Arrays.equals(read(result), apk), "downloaded APK hash matches manifest");
+        next.downloadArtifact("update.apk", apk.length, hash, url);
+        check(factory.requests.size() == 1, "verified cached APK reused");
+        check(!next.isReady(), "downloading APK alone does not mark game resources ready");
+        expectIo(() -> next.downloadArtifact("../outside.apk", apk.length, hash, url), "APK filename cannot escape state directory"); tests++;
     }
 
     private interface IoAction { void run() throws Exception; }

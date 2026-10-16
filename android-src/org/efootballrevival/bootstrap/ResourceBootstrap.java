@@ -5,6 +5,9 @@ import android.content.Context;
 import android.content.pm.PackageInfo;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -17,16 +20,15 @@ import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.WeakReference;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
-import org.json.JSONArray;
 import org.json.JSONObject;
 
 /** Call immediately after Activity.super.onCreate(). true means return from the original onCreate. */
@@ -45,7 +47,8 @@ public final class ResourceBootstrap {
         Screen screen = new Screen(activity);
         COORDINATOR.screen = new WeakReference<Screen>(screen);
         screen.render(COORDINATOR.status);
-        if (!COORDINATOR.running && !COORDINATOR.status.failed)
+        if (!COORDINATOR.running && !COORDINATOR.status.failed
+                && !(COORDINATOR.resourcesReady && COORDINATOR.updateChoice))
             COORDINATOR.start(activity.getApplicationContext());
         return true;
     }
@@ -68,27 +71,56 @@ public final class ResourceBootstrap {
         WeakReference<Screen> screen = new WeakReference<Screen>(null);
         volatile Status status = new Status("检查", "正在检查游戏资源…", 0, 0, false, false);
         boolean running, passNextLaunch;
+        boolean resourcesReady, updateChoice;
+        ResourceInstaller installer;
+        ApkUpdater.Info offeredUpdate;
+        File downloadedApk;
+        Context application;
         private boolean paintQueued;
         private long lastPaint;
 
         void start(final Context context) {
             if (running) return;
             running = true;
+            application = context;
+            updateChoice = false;
+            downloadedApk = null;
+            offeredUpdate = null;
             status = new Status("检查", "正在读取资源清单…", 0, 0, false, false);
             paint();
             worker.execute(new Runnable() {
                 public void run() {
                     Status result;
                     try {
-                        ResourceInstaller.Manifest manifest = loadManifest(context);
+                        ResourceInstaller.Manifest embedded = loadManifest(context);
                         PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
-                        if (!manifest.packageName.equals(context.getPackageName()) || manifest.versionCode != info.getLongVersionCode())
+                        if (!embedded.packageName.equals(context.getPackageName()) || embedded.versionCode != info.getLongVersionCode())
                             throw new IOException("安装包与资源版本不一致，请安装匹配版本");
                         JSONObject config = new JSONObject(readAsset(context, "resource-bootstrap/config.json"));
-                        ResourceInstaller installer = new ResourceInstaller(context.getFilesDir(), manifest,
-                                config.getString("baseUrl"), Coordinator.this);
+                        try { ApkUpdater.cleanupInstalled(context, config.getLong("buildRevision")); }
+                        catch (IOException cleanupFailure) { /* Cleanup must not block resource use. */ }
+                        boolean online = hasInternet(context);
+                        progress(online ? "检查更新" : "离线启动", online ? "正在检查资源和应用更新…" : "正在读取已准备的本地资源…", 0, 0);
+                        UpdateChannel channel = new UpdateChannel(context.getFilesDir(), context.getPackageName(),
+                                embedded.versionCode, config.getString("channelUrl"));
+                        UpdateChannel.Selection selection = channel.resolve(embedded, config.getString("baseUrl"), online);
+                        ApkUpdater.Info update = null;
+                        try {
+                            if (online && selection.apk != null) {
+                                ApkUpdater.Info candidate = new ApkUpdater.Info(selection.apk);
+                                if (candidate.buildRevision > config.getLong("buildRevision")) update = candidate;
+                            }
+                        } catch (Exception invalidApkMetadata) { /* Resource use must survive a malformed optional APK offer. */ }
+                        installer = new ResourceInstaller(context.getFilesDir(), selection.manifest,
+                                selection.baseUrl, Coordinator.this);
                         installer.install();
-                        result = new Status("完成", "资源准备完成，正在进入游戏…", 1, 1, false, true);
+                        offeredUpdate = update;
+                        resourcesReady = true;
+                        updateChoice = update != null;
+                        result = update == null
+                                ? new Status("完成", "资源准备完成，正在进入游戏…", 1, 1, false, true)
+                                : new Status("发现应用更新", "可更新至 " + update.versionName
+                                    + "。更新会覆盖当前应用并保留数据，也可以先进入游戏。", 0, 0, false, false);
                     } catch (Exception error) {
                         String message = error.getMessage();
                         if (message == null || message.trim().isEmpty()) message = error.getClass().getSimpleName();
@@ -100,6 +132,35 @@ public final class ResourceBootstrap {
                     });
                 }
             });
+        }
+
+        void downloadUpdate() {
+            if (running || offeredUpdate == null || installer == null) return;
+            running = true; updateChoice = false;
+            downloadedApk = null;
+            status = new Status("下载应用更新", "下载完成后将通过系统安装器覆盖更新", 0, 0, false, false);
+            paint();
+            worker.execute(new Runnable() {
+                public void run() {
+                    Status result;
+                    try {
+                        downloadedApk = ApkUpdater.downloadAndVerify(application, installer, offeredUpdate);
+                        result = new Status("更新已下载", "点击“安装更新”覆盖当前应用。若系统要求授权，授权后返回此页面继续安装。", 1, 1, false, false);
+                    } catch (Exception error) {
+                        result = new Status("更新未完成", String.valueOf(error.getMessage()), 0, 0, true, false);
+                    }
+                    final Status finished = result;
+                    main.post(new Runnable() {
+                        public void run() { running = false; updateChoice = true; status = finished; paint(); }
+                    });
+                }
+            });
+        }
+
+        void enterGame() {
+            updateChoice = false;
+            status = new Status("完成", "正在进入游戏…", 1, 1, false, true);
+            paint();
         }
 
         public void progress(String stage, String detail, long done, long total) {
@@ -145,7 +206,7 @@ public final class ResourceBootstrap {
         final Activity activity;
         final TextView title, statusText, detail, amount;
         final ProgressBar bar;
-        final Button retry;
+        final Button retry, update, play;
         boolean entering;
         Screen(final Activity activity) {
             this.activity = activity;
@@ -159,10 +220,10 @@ public final class ResourceBootstrap {
             int padding = dp(28);
             column.setPadding(padding, padding, padding, padding);
             scroll.addView(column, new ScrollView.LayoutParams(-1, -1));
-            title = text("准备游戏资源", 26, Color.WHITE);
+            title = text("efootxi", 26, Color.WHITE);
             title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
             column.addView(title, layout(0));
-            TextView note = text("首次启动需要准备约 3 GB 资源。准备完成后会自动进入游戏。\n\n建议连接 Wi-Fi，并在准备期间保持此页面打开。退出后再次打开可以继续下载。", 16, Color.rgb(192, 204, 221));
+            TextView note = text("首次启动自动准备游戏资源；以后检查新资源并复用已下载文件。\n\n建议连接 Wi-Fi，并在下载期间保持此页面打开。", 16, Color.rgb(192, 204, 221));
             column.addView(note, layout(20));
             statusText = text("检查", 19, Color.rgb(94, 199, 250));
             column.addView(statusText, layout(30));
@@ -184,6 +245,32 @@ public final class ResourceBootstrap {
                 }
             });
             column.addView(retry, layout(20));
+            update = new Button(activity);
+            update.setAllCaps(false);
+            update.setVisibility(View.GONE);
+            update.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View view) {
+                    if (!alive()) return;
+                    if (COORDINATOR.downloadedApk == null) { COORDINATOR.downloadUpdate(); return; }
+                    try {
+                        boolean opened = ApkUpdater.requestInstall(activity, COORDINATOR.downloadedApk);
+                        COORDINATOR.status = new Status("安装更新", opened
+                                ? "请在系统安装器中确认更新；取消后仍可进入游戏。"
+                                : "请允许此应用安装更新，然后返回点击“安装更新”。", 1, 1, false, false);
+                    } catch (Exception error) {
+                        COORDINATOR.status = new Status("安装未完成", String.valueOf(error.getMessage()), 0, 0, true, false);
+                    }
+                    COORDINATOR.paint();
+                }
+            });
+            column.addView(update, layout(12));
+            play = new Button(activity);
+            play.setText("先进入游戏");
+            play.setVisibility(View.GONE);
+            play.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View view) { if (alive()) COORDINATOR.enterGame(); }
+            });
+            column.addView(play, layout(8));
             activity.setContentView(scroll);
         }
         boolean alive() { return !activity.isFinishing() && !activity.isDestroyed(); }
@@ -191,8 +278,12 @@ public final class ResourceBootstrap {
             if (!alive()) return;
             statusText.setText(status.stage);
             detail.setText(status.detail);
-            retry.setVisibility(status.failed ? View.VISIBLE : View.GONE);
-            bar.setVisibility(status.failed ? View.GONE : View.VISIBLE);
+            boolean choosing = COORDINATOR.updateChoice && COORDINATOR.resourcesReady && !COORDINATOR.running;
+            update.setVisibility(choosing ? View.VISIBLE : View.GONE);
+            play.setVisibility(choosing ? View.VISIBLE : View.GONE);
+            update.setText(COORDINATOR.downloadedApk == null ? "下载并更新应用" : "安装更新");
+            retry.setVisibility(status.failed && !choosing ? View.VISIBLE : View.GONE);
+            bar.setVisibility(status.failed || choosing ? View.GONE : View.VISIBLE);
             bar.setIndeterminate(status.total <= 0 && !status.failed);
             if (status.total > 0) {
                 int progress = (int) Math.min(1000d, Math.max(0d, 1000d * status.done / status.total));
@@ -201,7 +292,7 @@ public final class ResourceBootstrap {
                     amount.setText(String.format(Locale.SIMPLIFIED_CHINESE, "%.1f%%  ·  %.1f / %.1f MB", progress / 10d, status.done / 1e6, status.total / 1e6));
                 else amount.setText(String.format(Locale.SIMPLIFIED_CHINESE, "%.1f%%", progress / 10d));
             } else amount.setText(status.failed ? "已完成的资源会保留；重新连接网络或释放空间后重试。" : "请稍候…");
-            if (status.failed || status.complete)
+            if (status.failed || status.complete || choosing)
                 activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             else activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         }
@@ -219,26 +310,17 @@ public final class ResourceBootstrap {
     }
 
     private static ResourceInstaller.Manifest loadManifest(Context context) throws Exception {
-        JSONObject root = new JSONObject(readAsset(context, "resource-bootstrap/manifest.json"));
-        if (root.getInt("schemaVersion") != 1) throw new IOException("不支持的资源清单版本");
-        JSONArray files = root.getJSONArray("files");
-        ArrayList<ResourceInstaller.Pack> packs = new ArrayList<ResourceInstaller.Pack>();
-        for (int i = 0; i < files.length(); i++) {
-            JSONObject file = files.getJSONObject(i);
-            JSONArray members = file.getJSONArray("entries");
-            ArrayList<ResourceInstaller.Entry> entries = new ArrayList<ResourceInstaller.Entry>();
-            long expanded = 0;
-            for (int j = 0; j < members.length(); j++) {
-                JSONObject member = members.getJSONObject(j);
-                ResourceInstaller.Entry entry = new ResourceInstaller.Entry(member.getString("path"),
-                        member.getLong("bytes"), member.getString("sha256"));
-                entries.add(entry); expanded = Math.addExact(expanded, entry.bytes);
-            }
-            if (file.getLong("expandedBytes") != expanded) throw new IOException("资源清单展开大小不一致");
-            packs.add(new ResourceInstaller.Pack(file.getString("name"), file.getLong("bytes"), file.getString("sha256"), entries));
-        }
-        return new ResourceInstaller.Manifest(root.getString("packageName"), root.getLong("versionCode"),
-                root.getString("resourceVersion"), packs);
+        return UpdateChannel.parseManifest(readAsset(context, "resource-bootstrap/manifest.json").getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static boolean hasInternet(Context context) {
+        try {
+            ConnectivityManager manager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            Network network = manager == null ? null : manager.getActiveNetwork();
+            NetworkCapabilities capabilities = network == null ? null : manager.getNetworkCapabilities(network);
+            return capabilities != null && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+        } catch (RuntimeException unavailable) { return false; }
     }
 
     private static String readAsset(Context context, String name) throws IOException {

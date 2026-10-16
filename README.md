@@ -1,46 +1,44 @@
-# 73efootball 自动资源准备测试版
+# efootxi 1.1
 
-安装 APK 后，首次打开会自动下载、校验并导入配套资源；准备完成后继续进入游戏原有启动流程。后续启动检查本地资源，无需重复下载。
+安装后自动准备资源，后续通过 GitHub 更新清单检查资源和应用更新。项目只提供一个统一安装包，手机上的应用名称为 **efootxi**，版本为 **1.1**。
 
-## 下载与使用
+## 下载和安装
 
-到 [Releases](https://github.com/maxlzyver/73efootball/releases) 下载自动下载测试版或 Android 12 兼容测试版的 `.apk` 文件。`resources-311010101-v1` 是程序使用的配套资源版本，用户无需手动下载其中的 ZIP。
+**[下载 efootxi 1.1](https://github.com/maxlzyver/efootxi/releases/download/v1.1/efootxi-1.1.apk)** · [发布页](https://github.com/maxlzyver/efootxi/releases/tag/v1.1)
 
-- APK 约 2 GB，首次资源下载约 3 GB，建议 Wi-Fi，并保持资源准备页面打开。
-- 需要 64 位 ARM Android 设备。原测试版最低系统声明为 API 32（Android 12L）；[Android 12 兼容测试版](https://github.com/maxlzyver/73efootball/releases/tag/bootstrap-11.1.1-android12-v2) 调整为 API 31，手机桌面名称为 `efootxi`。
-- 下载期间显示进度，失败后可重试；关闭进程后再次打开会尽可能续传。
-- 建议安装后预留至少 5 GB 可用空间供资源准备。程序会按实际剩余资源检查空间。
-- GitHub 下载表现取决于当前网络；首次准备需要能够访问 GitHub Releases。
-- 这是重新签名的测试 APK，签名不同于用户提供的原 APK，同包名旧版无法直接覆盖安装。已有存档时先通过原应用可靠备份；卸载通常会删除应用数据。
+- 支持范围：Android 12（API 31）及以上、ARM64 手机。这里的统一兼容版不包含 Android 11 及更早系统或 32 位手机。
+- APK 约 2 GB，首次资源下载约 3 GB。建议 Wi-Fi，安装后至少预留 5 GB 可用空间。
+- 已安装此前本项目测试包的用户，可以直接尝试覆盖安装 1.1，保留应用数据与资源，无需先卸载。重要存档请先备份。
+- 用户最初提供的原 APK 与本项目签名不同，不能覆盖安装；本项目发布的版本始终复用同一个签名和包名。
+- 下载中断后可继续；资源准备完整后，断网时直接读取本地资源进入游戏，不等待联网检查。游戏原有的联网功能仍需要网络。
 
-## 验证范围
+## 更新行为
 
-资源已逐文件校验。构建流程验证 APK 签名、ZIP 对齐，并检查原游戏 payload 是否保持一致。下载器核心逻辑通过独立 Java 测试。
+1. 联网启动时读取小体积更新清单；离线时使用本地有效清单。没有新资源时沿用原有快速就绪检查。
+2. 发现新资源清单后，按大小和 SHA-256 核对已有文件，复用通过校验的内容，只下载缺少或变化文件对应的资源包。
+3. 后续资源发布采用单文件小包；旧的大包可按需复用。修复缺失的旧资源时，仍可能需要下载其所在的历史大包。
+4. 发现新应用版本时，可选择下载更新或先进入游戏。下载完成后核对 APK 包名、版本和实际签名，再通过 Android 系统安装器覆盖更新。系统仍需要用户确认安装。
 
-当前没有连接 Android 测试设备，未验证实机安装、游戏菜单或比赛运行；也未承诺所有游戏模式能够离线使用。请把此版本视为需要实机反馈的测试包。
+1.1 沿用原有资源就绪检查。原游戏 DEX、原生引擎、画质和游戏资源保持不变；修改集中于资源/应用更新启动器和应用声明。
 
-Android 12 兼容测试版只修改安装清单中的最低系统声明和显示名称，保留其他 7,792 个文件的内容。已核对 API 32 接口的版本判断，并校验签名、对齐和全部文件哈希；尚未进行 Android 12 真机兼容与性能测试。
+Releases 中没有 APK 的资源版本及 updates 是应用下载依赖，普通玩家无需手动下载。维护者不要删除当前资源清单仍引用的附件。
 
-## 实现
+## 维护者发布资源
 
-- 在 `GatewayBootActivity.onCreate()` 调用系统 `super.onCreate()` 后插入资源准备判断。
-- 新增 `classes8.dex`，用 Android 平台 API 显示下载界面并处理资源部署。
-- APK 内置资源版本、包/文件大小及 SHA-256 清单，下载地址固定到相应 Release。
-- 每包下载后校验、解压并删除临时 ZIP；只写清单中指定的 `assetpacks/` 和 `Download/` 文件。
-- 完成标记绑定资源清单；正常启动检查文件存在及大小，资源缺失时恢复准备。
+请使用 [资源与 APK 更新说明](docs/resource-updates.md) 中的 tools/publish_resource_update.py。工具从完整资源 ZIP 中计算变化，只生成新增或变更文件的 ZIP，先发布资源并验证上传结果，最后更新固定的 channel.json。
 
-仓库源码仅包含本次新增的资源准备逻辑和打包工具，不包含游戏的原始开发工程。
+仅在 GitHub 页面上传一个 ZIP 不会自动生成客户端需要的完整性清单。已有资源附件保持不可变，新的资源使用新标签；工具会拒绝降低更新序号或更换签名。
 
-## 本地构建
+## 构建和验证
 
-构建脚本当前按本次 Windows 工作区准备：JDK 21、Android API 36 的 `android.jar`、Build Tools 36.0.0、Apktool 2.12.1。工具放在 `.tools/android/`，具体路径见 `tools/build_apk.py`。原 APK 与资源 ZIP 默认位于 `D:/ef/`。
+本仓库包含新增启动器、更新器和打包工具，不包含游戏原始开发工程。当前本地构建基于此前已校验的统一兼容包，工具为 JDK 21、Android SDK 36 / Build Tools 36；最低安装要求仍为 API 31。
 
 ```text
-python tools/package_resources.py
-python tools/build_apk.py
-python tools/verify_apk_payload.py
+python tools/build_efootxi.py --version 1.1 --build-revision 1100
 ```
 
-构建会在 `signing/` 首次生成独立签名材料。保留该目录供以后同签名更新；它已被 Git 忽略，不能上传到公开仓库。输出与本地验证报告位于 `release/`。
+后续修改代码时递增 --build-revision，并填写新版本名称。原游戏的 PAD 资源目录依赖 versionCode=311010101，因此保留该值；更新器使用独立构建序号识别新 APK。同包名和相同签名支持系统覆盖安装。
 
-制作 Android 12 / `efootxi` 变体时，将已验证的上一版自动下载 APK 路径传给 `tools/build_android12_variant.py`。该工具限定输入 SHA-256，只修改二进制安装清单，复用签名材料，并验证其他所有文件不变。`tools/check_android_api_delta.py` 可使用 SDK 的 `api-versions.xml` 审核 DEX 引用；静态引用检查不代表实机执行结果。
+signing/ 中的签名密钥和密码必须保留在本地，不得上传。输出 APK 和验证结果在 release/v1.1/，这些大文件和密钥均已被 Git 忽略。
+
+验证包含下载续传、资源增量复用、更新清单缓存与校验、APK 身份校验、API 31 签名、ZIP/原生库对齐及全部文件对比。当前未连接 Android 手机，新加入的应用更新安装界面尚未完成真机验证。
