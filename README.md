@@ -4,10 +4,10 @@
 
 ## 下载与使用
 
-到 [Releases](https://github.com/maxlzyver/73efootball/releases) 下载标有“自动下载测试版”的 `.apk` 文件。`resources-311010101-v1` 是程序使用的配套资源版本，用户无需手动下载其中的 ZIP。
+到 [Releases](https://github.com/maxlzyver/73efootball/releases) 下载自动下载测试版或 Android 12 兼容测试版的 `.apk` 文件。`resources-311010101-v1` 是程序使用的配套资源版本，用户无需手动下载其中的 ZIP。
 
 - APK 约 2 GB，首次资源下载约 3 GB，建议 Wi-Fi，并保持资源准备页面打开。
-- 需要 64 位 ARM Android 设备，原包最低系统声明为 Android API 32（Android 12L）。
+- 需要 64 位 ARM Android 设备。原测试版最低系统声明为 API 32（Android 12L）；[Android 12 兼容测试版](https://github.com/maxlzyver/73efootball/releases/tag/bootstrap-11.1.1-android12-v2) 调整为 API 31，手机桌面名称为 `efootxi`。
 - 下载期间显示进度，失败后可重试；关闭进程后再次打开会尽可能续传。
 - 建议安装后预留至少 5 GB 可用空间供资源准备。程序会按实际剩余资源检查空间。
 - GitHub 下载表现取决于当前网络；首次准备需要能够访问 GitHub Releases。
@@ -18,6 +18,8 @@
 资源已逐文件校验。构建流程验证 APK 签名、ZIP 对齐，并检查原游戏 payload 是否保持一致。下载器核心逻辑通过独立 Java 测试。
 
 当前没有连接 Android 测试设备，未验证实机安装、游戏菜单或比赛运行；也未承诺所有游戏模式能够离线使用。请把此版本视为需要实机反馈的测试包。
+
+Android 12 兼容测试版只修改安装清单中的最低系统声明和显示名称，保留其他 7,792 个文件的内容。已核对 API 32 接口的版本判断，并校验签名、对齐和全部文件哈希；尚未进行 Android 12 真机兼容与性能测试。
 
 ## 实现
 
@@ -40,3 +42,5 @@ python tools/verify_apk_payload.py
 ```
 
 构建会在 `signing/` 首次生成独立签名材料。保留该目录供以后同签名更新；它已被 Git 忽略，不能上传到公开仓库。输出与本地验证报告位于 `release/`。
+
+制作 Android 12 / `efootxi` 变体时，将已验证的上一版自动下载 APK 路径传给 `tools/build_android12_variant.py`。该工具限定输入 SHA-256，只修改二进制安装清单，复用签名材料，并验证其他所有文件不变。`tools/check_android_api_delta.py` 可使用 SDK 的 `api-versions.xml` 审核 DEX 引用；静态引用检查不代表实机执行结果。
