@@ -157,7 +157,7 @@ def build():
         'resourceBaseUrl': RESOURCE_URL,
         'manifestSha256': sha256(MANIFEST),
         'signature': 'new-local-signing-key',
-        'verification': ['apksigner-v2-v3', 'zipalign-4-and-16KiB-native'],
+        'verification': ['apksigner', 'zipalign-4-and-16KiB-native'],
         'deviceTest': 'not-performed-no-connected-device',
     }
     (OUTPUT.parent / 'apk-build.json').write_text(json.dumps(record, indent=2) + '\n', encoding='utf-8')
