@@ -40,6 +40,33 @@ public final class ResourceInstallerTest {
         subsetArchiveNeverInstallsSupersededFiles();
         subsetArchiveRejectsUnsafePaths();
         apkDownloadResumesAndVerifies();
+        exactSeedPolicyHasNoDirectoryWildcard();
+        runtimeSeedChangesDoNotRedownload();
+        offlineMissingContentFailsBeforeHashOrNetwork();
+        offlineCorruptContentNamesTheFailedFile();
+        lostLegacyMarkerMigratesWithoutDownload();
+        existingLegacyMarkerMigratesSeedReceipts();
+        partialInstallCannotClaimReady();
+        bundledSeedHashMustMatchBeforeDeployment();
+        failedRepairKeepsLastCompletionRecord();
+        pauseDownloadDisconnectsAndResumesExactOffset();
+        pauseHashPreservesReadyRecord();
+        pausedExtractionResumesOfflineFromCachedArchive();
+        offlineApkDownloadUsesNoTransport();
+        resourceUpdatePreservesRuntimeSeeds();
+        pauseInterruptsBlockedReadAndKeepsPrefix();
+        lostMarkerAndDamagedContentCannotOverwriteRuntimeState();
+        transientFailuresAutomaticallyResumeWithoutButton();
+        timeoutAndShortBodyAutomaticallyRecover();
+        progressRenewsConsecutiveRetryBudget();
+        expiredGithubRedirectIsRefreshedFromRelease();
+        permanentDownloadFailuresDoNotRetry();
+        exhaustedRetryBudgetPreservesProgress();
+        pauseInterruptsRetryBackoff();
+        automaticApkRetryUsesSameVerifiedTransport();
+        connectionLostAfterLastByteFinishesByHash();
+        networkReturnsDuringAutomaticRetry();
+        signedLinkBudgetRenewsAfterRealResponse();
         System.out.println("PASS " + tests + " test groups; " + assertions + " assertions");
     }
 
@@ -228,8 +255,9 @@ public final class ResourceInstallerTest {
     private static void forceVerifyRepairsSameLengthCorruption() throws Exception {
         Fixture f = fixture(); installer(f, new FakeFactory(Reply.ok(f.zip))).install();
         byte[] corruption = bytes("first-resource"); corruption[0] ^= 1; writeResource(f, 0, corruption);
+        bumpModified(new File(f.root, f.entries.get(0).path));
         FakeFactory factory = new FakeFactory(Reply.ok(f.zip)); ResourceInstaller next = installer(f, factory);
-        check(next.isReady(), "ordinary cold launch preserves previous size-only readiness behavior");
+        check(!next.isReady(), "changed modification time triggers a content hash despite unchanged length");
         next.install(true);
         check(factory.requests.size() == 1, "explicit integrity check repairs same-length damage");
         check(Arrays.equals(read(new File(f.root, f.entries.get(0).path)), bytes("first-resource")), "damaged file restored"); tests++;
@@ -322,6 +350,427 @@ public final class ResourceInstallerTest {
         expectIo(() -> next.downloadArtifact("../outside.apk", apk.length, hash, url), "APK filename cannot escape state directory"); tests++;
     }
 
+    private static final String SEED_PATH = "assetpacks/pad_ff_00/311010101/311010101/_metadata/properties.dat";
+    private static final byte[] SEED_BYTES = bytes("#Thu Oct 15 16:01:46 GMT+08:00 2026\nmoduleVersionTag=311010101\n");
+
+    private static void exactSeedPolicyHasNoDirectoryWildcard() throws Exception {
+        check(ResourcePolicy.seedCount() == 125, "baseline seed policy contains exactly the reviewed 125 identities");
+        check(ResourcePolicy.isSeed(new ResourceInstaller.Entry(SEED_PATH, SEED_BYTES.length, sha(SEED_BYTES))), "reviewed baseline metadata identity recognized");
+        check(!ResourcePolicy.isSeed(new ResourceInstaller.Entry(SEED_PATH, SEED_BYTES.length, sha(bytes("different")))), "changed seed identity does not weaken integrity automatically");
+        check(!ResourcePolicy.isSeed(new ResourceInstaller.Entry("assetpacks/unknown/_metadata/properties.dat", SEED_BYTES.length, sha(SEED_BYTES))), "metadata directory is not a wildcard");
+        check(!ResourcePolicy.isSeed(new ResourceInstaller.Entry("Download/user.bin", 1, sha(new byte[] {0}))), "Download directory is not a wildcard"); tests++;
+    }
+
+    private static void runtimeSeedChangesDoNotRedownload() throws Exception {
+        Fixture f = seedFixture(); seeded(f, new FakeFactory(Reply.ok(f.zip))).install();
+        byte[] changed = bytes("game-maintained-properties-now-a-different-size"); write(new File(f.root, SEED_PATH), changed);
+        Files.delete(new File(f.root, "Download/dummy").toPath());
+        FakeFactory offline = new FakeFactory(); final int[] checks = {0};
+        ResourceInstaller next = new ResourceInstaller(f.root, f.manifest, BASE, (stage, detail, done, total) -> {
+            if (stage.equals("检查") && detail.equals("核实已有资源")) checks[0]++;
+        }, offline, dir -> Long.MAX_VALUE).setSeedSource(ResourceInstallerTest::seedStream).setNetworkAllowed(false);
+        next.install();
+        check(offline.requests.isEmpty(), "runtime seed changes make zero network requests");
+        check(checks[0] == f.entries.size(), "unchanged content uses persisted verification receipt without re-reading payload bytes");
+        check(Arrays.equals(read(new File(f.root, SEED_PATH)), changed), "runtime metadata is preserved");
+        check(!new File(f.root, "Download/dummy").exists(), "consumed seed is not recreated after recorded installation");
+        check(next.isReady(), "game-managed seed deletion remains ready while content is intact"); tests++;
+    }
+
+    private static void offlineMissingContentFailsBeforeHashOrNetwork() throws Exception {
+        Fixture f = seedFixture(); seeded(f, new FakeFactory(Reply.ok(f.zip))).install();
+        byte[] marker = read(marker(f)); Files.delete(new File(f.root, f.entries.get(0).path).toPath());
+        FakeFactory offline = new FakeFactory(); final int[] hashProgress = {0};
+        ResourceInstaller next = new ResourceInstaller(f.root, f.manifest, BASE, (stage, detail, done, total) -> {
+            if (stage.equals("校验")) hashProgress[0]++;
+        }, offline, dir -> Long.MAX_VALUE).setSeedSource(ResourceInstallerTest::seedStream).setNetworkAllowed(false);
+        try { next.install(); throw new AssertionError("missing content accepted"); }
+        catch (ResourceInstaller.OfflineRequiredException expected) { check(expected.getMessage().contains(f.entries.get(0).path), "offline error identifies missing necessary file"); }
+        check(hashProgress[0] == 0 && offline.requests.isEmpty(), "offline preflight fails before large-file checks and transport");
+        check(Arrays.equals(read(marker(f)), marker), "offline failure preserves last successful record");
+        check(!next.diagnostics().isEmpty() && next.diagnostics().get(0).contains("文件缺失"), "missing-file diagnostics retained"); tests++;
+    }
+
+    private static void offlineCorruptContentNamesTheFailedFile() throws Exception {
+        Fixture f = seedFixture(); seeded(f, new FakeFactory(Reply.ok(f.zip))).install();
+        File content = new File(f.root, f.entries.get(0).path); byte[] corruption = read(content); corruption[0] ^= 1; write(content, corruption); bumpModified(content);
+        FakeFactory offline = new FakeFactory(); ResourceInstaller next = seeded(f, offline).setNetworkAllowed(false);
+        try { next.install(); throw new AssertionError("corrupt content accepted"); }
+        catch (ResourceInstaller.OfflineRequiredException expected) { check(expected.getMessage().contains("SHA-256"), "offline hash failure explains actual mismatch"); }
+        check(offline.requests.isEmpty(), "corrupt offline file never triggers DNS or download");
+        check(!next.isReady(), "known corruption invalidates cached verification receipt");
+        check(marker(f).isFile(), "last completion record survives corrupt-file diagnosis"); tests++;
+    }
+
+    private static void lostLegacyMarkerMigratesWithoutDownload() throws Exception {
+        Fixture f = seedFixture(); seeded(f, new FakeFactory(Reply.ok(f.zip))).install();
+        Files.delete(marker(f).toPath()); Files.delete(receipt(f).toPath());
+        byte[] runtime = bytes("changed-by-the-game"); write(new File(f.root, SEED_PATH), runtime);
+        Files.delete(new File(f.root, "Download/dummy").toPath());
+        FakeFactory offline = new FakeFactory(); ResourceInstaller next = seeded(f, offline).setNetworkAllowed(false); next.install();
+        check(next.isReady() && offline.requests.isEmpty(), "lost old marker migrates locally after content SHA verification");
+        check(Arrays.equals(read(new File(f.root, SEED_PATH)), runtime), "migration retains existing game-managed metadata");
+        check(Arrays.equals(read(new File(f.root, "Download/dummy")), new byte[] {0}), "missing seed restored from verified embedded bytes only once");
+        Files.delete(new File(f.root, "Download/dummy").toPath());
+        seeded(f, offline).setNetworkAllowed(false).install();
+        check(!new File(f.root, "Download/dummy").exists(), "new receipt prevents repeating seed restoration"); tests++;
+    }
+
+    private static void existingLegacyMarkerMigratesSeedReceipts() throws Exception {
+        Fixture f = seedFixture(); seeded(f, new FakeFactory(Reply.ok(f.zip))).install();
+        Files.delete(receipt(f).toPath()); write(new File(f.root, SEED_PATH), bytes("runtime state"));
+        Files.delete(new File(f.root, "Download/dummy").toPath());
+        ResourceInstaller next = installer(f, new FakeFactory()).setNetworkAllowed(false); next.install();
+        check(next.isReady(), "matching legacy complete marker migrates exact seed receipts");
+        check(!new File(f.root, "Download/dummy").exists(), "legacy proven deployment does not resurrect consumed seed"); tests++;
+    }
+
+    private static void partialInstallCannotClaimReady() throws Exception {
+        Fixture f = seedFixture(); File seed = new File(f.root, SEED_PATH); seed.getParentFile().mkdirs(); write(seed, SEED_BYTES);
+        ResourceInstaller next = seeded(f, new FakeFactory()).setNetworkAllowed(false);
+        check(!next.isReady(), "seed presence cannot replace content installation");
+        try { next.install(); throw new AssertionError("partial install accepted"); }
+        catch (ResourceInstaller.OfflineRequiredException expected) { assertions++; }
+        check(!marker(f).exists(), "partial installation cannot create a completion marker"); tests++;
+    }
+
+    private static void bundledSeedHashMustMatchBeforeDeployment() throws Exception {
+        Fixture f = seedFixture(); File content = new File(f.root, f.entries.get(0).path); content.getParentFile().mkdirs(); write(content, bytes("first-resource"));
+        ResourceInstaller next = installer(f, new FakeFactory()).setNetworkAllowed(false).setSeedSource(path -> new ByteArrayInputStream(bytes("corrupt")));
+        expectIo(() -> next.install(), "corrupt bundled seed fails before publication");
+        check(!new File(f.root, SEED_PATH).exists() && !marker(f).exists(), "invalid bundled seed cannot be installed or marked complete"); tests++;
+    }
+
+    private static void failedRepairKeepsLastCompletionRecord() throws Exception {
+        Fixture f = fixture(); installer(f, new FakeFactory(Reply.ok(f.zip))).install(); byte[] last = read(marker(f));
+        writeResource(f, 0, bytes("damaged"));
+        ResourceInstaller next = installer(f, new FakeFactory(new Reply(503, new byte[0])));
+        expectIo(() -> next.install(), "failed repair reports transport error");
+        check(Arrays.equals(read(marker(f)), last), "repair never erases previous completion record prematurely");
+        check(!next.isReady(), "last record alone cannot authorize damaged content"); tests++;
+    }
+
+    private static void pauseDownloadDisconnectsAndResumesExactOffset() throws Exception {
+        Fixture f = largeFixture(); int offset = 128 * 1024;
+        FakeFactory factory = new FakeFactory(Reply.ok(f.zip), Reply.range(f.zip, offset, "\"v1\""));
+        final ResourceInstaller[] holder = new ResourceInstaller[1]; final boolean[] requested = {false};
+        holder[0] = new ResourceInstaller(f.root, f.manifest, BASE, (stage, detail, done, total) -> {
+            if (stage.equals("下载") && done >= offset && !requested[0]) { requested[0] = true; holder[0].requestPause(); }
+        }, factory, dir -> Long.MAX_VALUE);
+        try { holder[0].install(); throw new AssertionError("pause not observed"); }
+        catch (ResourceInstaller.PausedException expected) { assertions++; }
+        check(part(f).length() == offset, "pause persists exact downloaded prefix");
+        check(factory.requests.get(0).disconnected, "pause disconnects active HTTP connection");
+        check(!marker(f).exists(), "paused first installation is not marked complete");
+        holder[0].resume(); holder[0].install();
+        check(("bytes=" + offset + "-").equals(factory.requests.get(1).getRequestProperty("Range")), "continue resumes from exact saved byte offset");
+        check(holder[0].isReady(), "resumed archive and contents pass complete verification"); tests++;
+    }
+
+    private static void pauseHashPreservesReadyRecord() throws Exception {
+        Fixture f = largeFixture(); installer(f, new FakeFactory(Reply.ok(f.zip))).install(); byte[] completed = read(marker(f));
+        final ResourceInstaller[] holder = new ResourceInstaller[1]; final boolean[] requested = {false};
+        holder[0] = new ResourceInstaller(f.root, f.manifest, BASE, (stage, detail, done, total) -> {
+            if (stage.equals("校验") && done > 0 && !requested[0]) { requested[0] = true; holder[0].requestPause(); }
+        }, new FakeFactory(), dir -> Long.MAX_VALUE);
+        try { holder[0].install(true); throw new AssertionError("hash pause ignored"); }
+        catch (ResourceInstaller.PausedException expected) { assertions++; }
+        check(Arrays.equals(read(marker(f)), completed), "pausing verification retains successful-install record");
+        holder[0].resume(); holder[0].install(true); check(holder[0].isReady(), "verification can resume locally"); tests++;
+    }
+
+    private static void pausedExtractionResumesOfflineFromCachedArchive() throws Exception {
+        Fixture f = largeFixture(); FakeFactory factory = new FakeFactory(Reply.ok(f.zip));
+        final ResourceInstaller[] holder = new ResourceInstaller[1]; final boolean[] requested = {false};
+        holder[0] = new ResourceInstaller(f.root, f.manifest, BASE, (stage, detail, done, total) -> {
+            if (stage.equals("解压") && done > 0 && !requested[0]) { requested[0] = true; holder[0].requestPause(); }
+        }, factory, dir -> Long.MAX_VALUE);
+        try { holder[0].install(); throw new AssertionError("extraction pause ignored"); }
+        catch (ResourceInstaller.PausedException expected) { assertions++; }
+        check(new File(f.root, "resource-bootstrap-state/resources-01.zip").isFile(), "verified complete archive survives extraction pause");
+        check(!new File(f.root, f.entries.get(0).path).exists(), "partial extracted file is never published");
+        holder[0].resume(); holder[0].setNetworkAllowed(false).install();
+        check(factory.requests.size() == 1 && holder[0].isReady(), "cached archive finishes extraction offline without another request"); tests++;
+    }
+
+    private static void offlineApkDownloadUsesNoTransport() throws Exception {
+        Fixture f = fixture(); byte[] apk = bytes("verified-update-package"); String hash = sha(apk);
+        String url = "https://github.com/maxlzyver/efootxi/releases/download/app/update.apk";
+        FakeFactory offline = new FakeFactory(); ResourceInstaller unavailable = installer(f, offline).setNetworkAllowed(false);
+        try { unavailable.downloadArtifact("update.apk", apk.length, hash, url); throw new AssertionError("offline APK request allowed"); }
+        catch (ResourceInstaller.OfflineRequiredException expected) { assertions++; }
+        check(offline.requests.isEmpty(), "APK transport also obeys offline guard");
+        installer(f, new FakeFactory(Reply.ok(apk))).downloadArtifact("update.apk", apk.length, hash, url);
+        File cached = unavailable.downloadArtifact("update.apk", apk.length, hash, url);
+        check(Arrays.equals(read(cached), apk) && offline.requests.isEmpty(), "verified downloaded APK can be reused offline"); tests++;
+    }
+
+    private static void resourceUpdatePreservesRuntimeSeeds() throws Exception {
+        Fixture f = seedFixture(); seeded(f, new FakeFactory(Reply.ok(f.zip))).install();
+        byte[] runtime = bytes("runtime metadata changed during game"); write(new File(f.root, SEED_PATH), runtime);
+        Files.delete(new File(f.root, "Download/dummy").toPath());
+        byte[] newer = bytes("new-content-version"); LinkedHashMap<String, byte[]> content = new LinkedHashMap<String, byte[]>();
+        content.put(f.entries.get(0).path, newer); byte[] archive = zip(content);
+        ResourceInstaller.Entry changed = new ResourceInstaller.Entry(f.entries.get(0).path, newer.length, sha(newer));
+        ResourceInstaller.Pack seeds = new ResourceInstaller.Pack(f.pack.name, f.pack.bytes, f.pack.sha256,
+                f.entries.subList(1, f.entries.size()), BASE + f.pack.name, true);
+        ResourceInstaller.Pack patch = new ResourceInstaller.Pack("content-update.zip", archive.length, sha(archive), Collections.singletonList(changed));
+        ResourceInstaller.Manifest update = new ResourceInstaller.Manifest("test.game", 311010101, "v2", Arrays.asList(seeds, patch));
+        FakeFactory factory = new FakeFactory(Reply.ok(archive));
+        ResourceInstaller next = new ResourceInstaller(f.root, update, BASE, null, factory, dir -> Long.MAX_VALUE)
+                .setSeedSource(ResourceInstallerTest::seedStream);
+        next.install();
+        check(factory.requests.size() == 1 && factory.requests.get(0).getURL().getPath().endsWith("/content-update.zip"), "resource update downloads only changed content pack");
+        check(Arrays.equals(read(new File(f.root, SEED_PATH)), runtime), "resource revision does not overwrite game-maintained metadata");
+        check(!new File(f.root, "Download/dummy").exists(), "resource revision does not recreate consumed unchanged seed");
+        check(next.isReady(), "updated content and retained seeds form ready installation"); tests++;
+    }
+
+    private static void pauseInterruptsBlockedReadAndKeepsPrefix() throws Exception {
+        Fixture f = fixture(); int prefix = 32;
+        final java.util.concurrent.CountDownLatch blocked = new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.CountDownLatch disconnected = new java.util.concurrent.CountDownLatch(1);
+        ResourceInstaller.ConnectionFactory factory = url -> new HttpURLConnection(url) {
+            public void connect() { }
+            public boolean usingProxy() { return false; }
+            public int getResponseCode() { return 200; }
+            public void disconnect() { disconnected.countDown(); }
+            public String getHeaderField(String key) {
+                if ("Content-Length".equalsIgnoreCase(key)) return Integer.toString(f.zip.length);
+                if ("ETag".equalsIgnoreCase(key)) return "\"v1\"";
+                return null;
+            }
+            public InputStream getInputStream() {
+                return new InputStream() {
+                    boolean first = true;
+                    public int read() throws IOException { throw new IOException("unused scalar read"); }
+                    public int read(byte[] buffer, int offset, int length) throws IOException {
+                        if (first) { first = false; System.arraycopy(f.zip, 0, buffer, offset, prefix); return prefix; }
+                        blocked.countDown();
+                        try {
+                            if (!disconnected.await(5, java.util.concurrent.TimeUnit.SECONDS)) throw new IOException("test disconnect timed out");
+                        } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new IOException(interrupted); }
+                        throw new IOException("connection closed by pause");
+                    }
+                };
+            }
+        };
+        final ResourceInstaller next = new ResourceInstaller(f.root, f.manifest, BASE, null, factory, dir -> Long.MAX_VALUE);
+        final java.util.concurrent.atomic.AtomicReference<Throwable> failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+        Thread worker = new Thread(() -> { try { next.install(); } catch (Throwable error) { failure.set(error); } }); worker.start();
+        check(blocked.await(5, java.util.concurrent.TimeUnit.SECONDS), "download reaches blocking socket read");
+        next.requestPause(); worker.join(5000);
+        check(!worker.isAlive() && failure.get() instanceof ResourceInstaller.PausedException, "disconnect wakes blocking read and produces pause state instead of network error");
+        check(part(f).length() == prefix, "blocking-read pause keeps completed prefix");
+        FakeFactory resumed = new FakeFactory(Reply.range(f.zip, prefix, "\"v1\"")); installer(f, resumed).install();
+        check(("bytes=" + prefix + "-").equals(resumed.requests.get(0).getRequestProperty("Range")), "new process resumes prefix after blocked-read pause"); tests++;
+    }
+
+    private static void lostMarkerAndDamagedContentCannotOverwriteRuntimeState() throws Exception {
+        Fixture f = seedFixture(); seeded(f, new FakeFactory(Reply.ok(f.zip))).install();
+        Files.delete(marker(f).toPath()); Files.delete(receipt(f).toPath());
+        byte[] runtime = bytes("game state newer than original snapshot"); write(new File(f.root, SEED_PATH), runtime);
+        write(new File(f.root, f.entries.get(0).path), bytes("broken"));
+        ResourceInstaller next = seeded(f, new FakeFactory(new Reply(503, new byte[0])));
+        expectIo(() -> next.install(), "content repair fails after missing-marker migration");
+        check(Arrays.equals(read(new File(f.root, SEED_PATH)), runtime), "absence of marker plus damaged content never authorizes rollback of existing runtime state");
+        check(!marker(f).exists() && !next.isReady(), "failed content repair remains incomplete despite accepted runtime state"); tests++;
+    }
+
+    private static void transientFailuresAutomaticallyResumeWithoutButton() throws Exception {
+        Fixture f = fixture(); int prefix = 31;
+        Reply limited = new Reply(429, new byte[0]); limited.headers.put("retry-after", "5");
+        FakeFactory factory = new FakeFactory(Reply.broken(f.zip, prefix), new Reply(503, new byte[0]), limited,
+                Reply.range(f.zip, prefix, "\"v1\""));
+        List<Long> waits = new ArrayList<Long>(); List<String> stages = new ArrayList<String>();
+        ResourceInstaller next = new ResourceInstaller(f.root, f.manifest, BASE,
+                (stage, detail, done, total) -> stages.add(stage), factory, dir -> Long.MAX_VALUE, 3, waits::add);
+        next.install();
+        check(next.isReady(), "connection reset, HTTP 503 and rate limiting recover in one install call");
+        check(waits.equals(Arrays.asList(1000L, 2000L, 5000L)), "backoff increases and observes bounded Retry-After");
+        for (int i = 1; i < factory.requests.size(); i++) {
+            check(("bytes=" + prefix + "-").equals(factory.requests.get(i).getRequestProperty("Range")), "every automatic request retains exact partial prefix");
+            check("\"v1\"".equals(factory.requests.get(i).getRequestProperty("If-Range")), "ETag written before interrupted body is reused immediately");
+        }
+        check(Collections.frequency(stages, "自动重试") == 3, "player sees automatic reconnect state for each wait");
+        for (FakeConnection connection : factory.requests) check(connection.disconnected, "failed and completed sockets close");
+        tests++;
+    }
+
+    private static void timeoutAndShortBodyAutomaticallyRecover() throws Exception {
+        Fixture f = fixture(); int prefix = 23;
+        Reply timeout = Reply.ok(f.zip); timeout.headerFailure = new java.net.SocketTimeoutException("simulated connect timeout");
+        Reply shortBody = new Reply(200, Arrays.copyOf(f.zip, prefix));
+        shortBody.headers.put("content-length", Integer.toString(f.zip.length)); shortBody.headers.put("etag", "\"v1\"");
+        FakeFactory factory = new FakeFactory(timeout, shortBody, Reply.range(f.zip, prefix, "\"v1\""));
+        List<Long> waits = new ArrayList<Long>();
+        ResourceInstaller next = retrying(f, factory, 2, waits); next.install();
+        check(next.isReady() && factory.requests.size() == 3, "connect timeout and clean but truncated EOF both recover");
+        check(factory.requests.get(0).disconnected, "header timeout closes its socket before retry");
+        check(("bytes=" + prefix + "-").equals(factory.requests.get(2).getRequestProperty("Range")), "truncated EOF keeps verified-identity prefix");
+        check(waits.equals(Arrays.asList(1000L, 1000L)), "newly received bytes renew no-progress retry budget"); tests++;
+    }
+
+    private static void progressRenewsConsecutiveRetryBudget() throws Exception {
+        Fixture f = fixture(); int first = 19, second = 41;
+        Reply advancing = Reply.range(f.zip, first, "\"v1\""); advancing.failAfter = second - first;
+        FakeFactory factory = new FakeFactory(Reply.broken(f.zip, first), new Reply(503, new byte[0]),
+                advancing, new Reply(503, new byte[0]), Reply.range(f.zip, second, "\"v1\""));
+        List<Long> waits = new ArrayList<Long>(); ResourceInstaller next = retrying(f, factory, 2, waits);
+        next.install();
+        check(next.isReady() && factory.requests.size() == 5, "large transfer is not limited by cumulative transient errors");
+        check(waits.equals(Arrays.asList(1000L, 2000L, 1000L, 2000L)), "any new bytes reset consecutive-failure backoff");
+        check(("bytes=" + second + "-").equals(factory.requests.get(4).getRequestProperty("Range")), "later reconnect resumes newest prefix"); tests++;
+    }
+
+    private static void expiredGithubRedirectIsRefreshedFromRelease() throws Exception {
+        Fixture f = fixture(); preparePartial(f, 29);
+        Reply expired = new Reply(302, new byte[0]); expired.headers.put("location", "https://release-assets.githubusercontent.com/release/old?token=expired");
+        Reply refreshed = new Reply(302, new byte[0]); refreshed.headers.put("location", "https://release-assets.githubusercontent.com/release/new?token=fresh");
+        FakeFactory factory = new FakeFactory(expired, new Reply(403, new byte[0]), refreshed, Reply.range(f.zip, 29, "\"v1\""));
+        ResourceInstaller next = retrying(f, factory, 2, new ArrayList<Long>()); next.install();
+        check(next.isReady() && factory.requests.size() == 4, "expired GitHub signed redirect renews and finishes");
+        URL restarted = factory.requests.get(2).getURL();
+        check("github.com".equals(restarted.getHost()) && restarted.getPath().equals(new URL(BASE + f.pack.name).getPath()), "expired asset returns to immutable Release URL");
+        check(restarted.getQuery() != null && restarted.getQuery().startsWith("efootxi_retry="), "expired redirect refresh bypasses stale signed-URL cache");
+        for (FakeConnection connection : factory.requests) {
+            check("bytes=29-".equals(connection.getRequestProperty("Range")), "redirect renewal never discards downloaded prefix");
+            check("no-cache".equals(connection.getRequestProperty("Cache-Control")) && !connection.getUseCaches(), "reconnect disables URL connection cache");
+        }
+        Fixture denied = fixture();
+        FakeFactory repeated = new FakeFactory(expired, new Reply(403, new byte[0]), expired, new Reply(403, new byte[0]), expired, new Reply(403, new byte[0]));
+        expectIo(() -> retrying(denied, repeated, 12, new ArrayList<Long>()).install(), "repeated signed-link rejection is bounded");
+        check(repeated.requests.size() == 6, "signed-link rejection stops after original and two refreshed links"); tests++;
+    }
+
+    private static void permanentDownloadFailuresDoNotRetry() throws Exception {
+        for (int status : new int[] {400, 401, 403, 404, 410, 501, 505}) {
+            Fixture f = fixture(); FakeFactory factory = new FakeFactory(new Reply(status, new byte[0]));
+            List<Long> waits = new ArrayList<Long>();
+            expectIo(() -> retrying(f, factory, 12, waits).install(), "permanent HTTP status does not spin: " + status);
+            check(factory.requests.size() == 1 && waits.isEmpty(), "permanent HTTP error stops immediately: " + status);
+        }
+        Fixture corrupt = fixture(); byte[] bad = corrupt.zip.clone(); bad[40] ^= 1;
+        FakeFactory badFactory = new FakeFactory(Reply.ok(bad)); List<Long> waits = new ArrayList<Long>();
+        expectIo(() -> retrying(corrupt, badFactory, 12, waits).install(), "hash mismatch cannot trigger repeated corrupt downloads");
+        check(badFactory.requests.size() == 1 && waits.isEmpty() && !part(corrupt).exists(), "failed SHA discards corrupt data and remains an explicit failure");
+        Fixture disk = fixture(); FakeFactory diskFactory = new FakeFactory(Reply.ok(disk.zip));
+        ResourceInstaller diskInstaller = retrying(disk, diskFactory, 12, waits);
+        check(part(disk).mkdir(), "prepare unusable local output directory");
+        write(new File(part(disk), "blocker"), bytes("cannot replace local directory"));
+        expectIo(() -> diskInstaller.install(), "local disk/path failure is not transport retryable");
+        check(diskFactory.requests.size() <= 1 && waits.isEmpty(), "unwritable local output does not repeat network requests");
+        Fixture tls = fixture(); Reply rejected = Reply.ok(tls.zip);
+        rejected.headerFailure = new javax.net.ssl.SSLHandshakeException("certificate rejected");
+        FakeFactory tlsFactory = new FakeFactory(rejected);
+        expectIo(() -> retrying(tls, tlsFactory, 12, waits).install(), "certificate failure does not weaken or retry TLS");
+        check(tlsFactory.requests.size() == 1 && waits.isEmpty(), "TLS identity failure fails immediately"); tests++;
+    }
+
+    private static void exhaustedRetryBudgetPreservesProgress() throws Exception {
+        Fixture f = fixture(); preparePartial(f, 37);
+        FakeFactory factory = new FakeFactory(new Reply(503, new byte[0]), new Reply(503, new byte[0]), new Reply(503, new byte[0]));
+        List<Long> waits = new ArrayList<Long>();
+        expectIo(() -> retrying(f, factory, 2, waits).install(), "continuous no-progress failures eventually give actionable error");
+        check(factory.requests.size() == 3 && waits.size() == 2, "retry budget counts failures without progress");
+        check(part(f).length() == 37 && !marker(f).exists(), "exhausted attempts retain prefix without declaring ready");
+        FakeFactory recovered = new FakeFactory(Reply.range(f.zip, 37, "\"v1\""));
+        ResourceInstaller next = retrying(f, recovered, 2, new ArrayList<Long>()); next.install();
+        check(next.isReady() && "bytes=37-".equals(recovered.requests.get(0).getRequestProperty("Range")), "later manual recovery resumes exact old prefix"); tests++;
+    }
+
+    private static void pauseInterruptsRetryBackoff() throws Exception {
+        Fixture f = fixture(); preparePartial(f, 27);
+        Reply longWait = new Reply(429, new byte[0]); longWait.headers.put("retry-after", "60");
+        FakeFactory factory = new FakeFactory(longWait);
+        java.util.concurrent.CountDownLatch waiting = new java.util.concurrent.CountDownLatch(1);
+        ResourceInstaller next = new ResourceInstaller(f.root, f.manifest, BASE,
+                (stage, detail, done, total) -> { if (stage.equals("自动重试")) waiting.countDown(); }, factory, dir -> Long.MAX_VALUE);
+        java.util.concurrent.atomic.AtomicReference<Throwable> failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+        Thread worker = new Thread(() -> { try { next.install(); } catch (Throwable error) { failure.set(error); } }); worker.start();
+        check(waiting.await(5, java.util.concurrent.TimeUnit.SECONDS), "production path enters a 60-second server backoff");
+        long start = System.nanoTime(); next.requestPause(); worker.join(2000);
+        check(!worker.isAlive() && failure.get() instanceof ResourceInstaller.PausedException, "pause wakes production retry wait immediately");
+        check((System.nanoTime() - start) < 2000000000L && part(f).length() == 27, "pause preserves prefix without waiting for backoff");
+        check(factory.requests.size() == 1 && factory.requests.get(0).disconnected, "paused wait has no active socket or late reconnect"); tests++;
+    }
+
+    private static void automaticApkRetryUsesSameVerifiedTransport() throws Exception {
+        Fixture f = fixture(); byte[] apk = bytes("apk-content-automatic-resume");
+        FakeFactory factory = new FakeFactory(Reply.broken(apk, 8), Reply.range(apk, 8, "\"v1\""));
+        ResourceInstaller next = retrying(f, factory, 2, new ArrayList<Long>());
+        File downloaded = next.downloadArtifact("update.apk", apk.length, sha(apk), "https://github.com/maxlzyver/efootxi-test/releases/download/test/update.apk");
+        check(Arrays.equals(apk, read(downloaded)) && "bytes=8-".equals(factory.requests.get(1).getRequestProperty("Range")), "APK updates automatically resume and retain full SHA verification");
+        check(!next.isReady(), "APK transport never claims game resource readiness"); tests++;
+    }
+
+    private static ResourceInstaller retrying(Fixture f, FakeFactory factory, int retries, List<Long> waits) throws IOException {
+        return new ResourceInstaller(f.root, f.manifest, BASE, null, factory, dir -> Long.MAX_VALUE, retries, waits::add);
+    }
+
+    private static void connectionLostAfterLastByteFinishesByHash() throws Exception {
+        Fixture f = fixture(); FakeFactory factory = new FakeFactory(Reply.broken(f.zip, f.zip.length));
+        List<Long> waits = new ArrayList<Long>(); ResourceInstaller next = retrying(f, factory, 2, waits); next.install();
+        check(next.isReady() && factory.requests.size() == 1 && waits.isEmpty(), "connection reset after final expected byte validates full SHA without downloading again");
+        Fixture corrupt = fixture(); byte[] bad = corrupt.zip.clone(); bad[40] ^= 1;
+        FakeFactory badFactory = new FakeFactory(Reply.broken(bad, bad.length));
+        expectIo(() -> retrying(corrupt, badFactory, 2, new ArrayList<Long>()).install(), "last-byte connection failure still requires valid full SHA");
+        check(!part(corrupt).exists() && !marker(corrupt).exists(), "corrupt full partial is discarded instead of being accepted or resumed"); tests++;
+    }
+
+    private static void networkReturnsDuringAutomaticRetry() throws Exception {
+        Fixture f = fixture(); FakeFactory restored = new FakeFactory(Reply.ok(f.zip)); int[] opens = {0};
+        List<Long> waits = new ArrayList<Long>();
+        ResourceInstaller.ConnectionFactory outage = address -> {
+            opens[0]++;
+            if (opens[0] == 1) throw new java.net.UnknownHostException("network offline");
+            if (opens[0] == 2) throw new java.net.NoRouteToHostException("network changing");
+            return restored.open(address);
+        };
+        ResourceInstaller next = new ResourceInstaller(f.root, f.manifest, BASE, null, outage,
+                dir -> Long.MAX_VALUE, 2, waits::add); next.install();
+        check(next.isReady() && opens[0] == 3, "network returning after DNS/routing outage continues same installation automatically");
+        check(waits.equals(Arrays.asList(1000L, 2000L)), "offline connection attempts follow bounded backoff"); tests++;
+    }
+
+    private static void signedLinkBudgetRenewsAfterRealResponse() throws Exception {
+        Fixture f = fixture(); Reply link = new Reply(302, new byte[0]);
+        link.headers.put("location", "https://release-assets.githubusercontent.com/release/asset?token=value");
+        int first = 21, second = 43;
+        Reply firstBody = Reply.broken(f.zip, first);
+        Reply secondBody = Reply.range(f.zip, first, "\"v1\""); secondBody.failAfter = second - first;
+        FakeFactory factory = new FakeFactory(link, new Reply(403, new byte[0]), link, firstBody,
+                link, new Reply(403, new byte[0]), link, secondBody,
+                link, new Reply(403, new byte[0]), link, Reply.range(f.zip, second, "\"v1\""));
+        ResourceInstaller next = retrying(f, factory, 12, new ArrayList<Long>()); next.install();
+        check(next.isReady() && factory.requests.size() == 12, "three separate temporary-link expiries across advancing transfer each recover");
+        check(("bytes=" + second + "-").equals(factory.requests.get(11).getRequestProperty("Range")), "valid signed response renews link-error budget without losing latest bytes"); tests++;
+    }
+
+    private static File marker(Fixture f) { return new File(f.root, "resource-bootstrap-state/complete.marker"); }
+    private static File receipt(Fixture f) { return new File(f.root, "resource-bootstrap-state/verified-files.properties"); }
+    private static void bumpModified(File file) throws IOException {
+        if (!file.setLastModified(file.lastModified() + 5000)) throw new IOException("cannot set test timestamp");
+    }
+    private static InputStream seedStream(String path) throws IOException {
+        if (path.equals(SEED_PATH)) return new ByteArrayInputStream(SEED_BYTES);
+        if (path.equals("Download/dummy")) return new ByteArrayInputStream(new byte[] {0});
+        throw new FileNotFoundException(path);
+    }
+    private static ResourceInstaller seeded(Fixture f, FakeFactory factory) throws IOException {
+        return installer(f, factory).setSeedSource(ResourceInstallerTest::seedStream);
+    }
+    private static Fixture seedFixture() throws Exception {
+        LinkedHashMap<String, byte[]> contents = new LinkedHashMap<String, byte[]>();
+        contents.put("assetpacks/pad_ff_01/311010101/assets/test.bin", bytes("first-resource"));
+        contents.put(SEED_PATH, SEED_BYTES); contents.put("Download/dummy", new byte[] {0}); return fixture(contents);
+    }
+    private static Fixture largeFixture() throws Exception {
+        byte[] content = new byte[512 * 1024]; new Random(48235).nextBytes(content);
+        LinkedHashMap<String, byte[]> contents = new LinkedHashMap<String, byte[]>(); contents.put("Download/content.ucas", content);
+        return fixture(contents);
+    }
+
     private interface IoAction { void run() throws Exception; }
     private static void expectIo(IoAction action, String message) throws Exception {
         try { action.run(); throw new AssertionError(message); }
@@ -340,17 +789,21 @@ public final class ResourceInstallerTest {
         expectIo(() -> installer(f, new FakeFactory(Reply.broken(f.zip, prefix))).install(), "prepare interrupted download");
     }
     private static ResourceInstaller installer(Fixture f, FakeFactory factory) throws IOException {
-        return new ResourceInstaller(f.root, f.manifest, BASE, null, factory, dir -> Long.MAX_VALUE);
+        // Existing recovery tests deliberately simulate a process stopping at its first failure.
+        return new ResourceInstaller(f.root, f.manifest, BASE, null, factory, dir -> Long.MAX_VALUE, 0, delay -> { });
     }
     private static ResourceInstaller.Manifest manifest(String version, ResourceInstaller.Pack pack) {
         return new ResourceInstaller.Manifest("test.game", 311010101, version, Collections.singletonList(pack));
     }
     private static Fixture fixture() throws Exception {
-        File parent = new File("android-build/resource-installer-tests"); parent.mkdirs();
-        File root = Files.createTempDirectory(parent.toPath(), "case-").toFile();
         LinkedHashMap<String, byte[]> contents = new LinkedHashMap<String, byte[]>();
         contents.put("assetpacks/pad_ff_01/311010101/assets/test.bin", bytes("first-resource"));
         contents.put("Download/test.bin", bytes("second-resource-data"));
+        return fixture(contents);
+    }
+    private static Fixture fixture(LinkedHashMap<String, byte[]> contents) throws Exception {
+        File parent = new File("android-build/resource-installer-tests"); parent.mkdirs();
+        File root = Files.createTempDirectory(parent.toPath(), "case-").toFile();
         ArrayList<ResourceInstaller.Entry> entries = new ArrayList<ResourceInstaller.Entry>();
         for (Map.Entry<String, byte[]> item : contents.entrySet()) entries.add(new ResourceInstaller.Entry(item.getKey(), item.getValue().length, sha(item.getValue())));
         byte[] zip = zip(contents);
@@ -375,6 +828,7 @@ public final class ResourceInstallerTest {
     }
     private static final class Reply {
         final int code; final byte[] body; final Map<String, String> headers = new HashMap<String, String>(); int failAfter = -1;
+        IOException headerFailure;
         Reply(int code, byte[] body) { this.code = code; this.body = body; headers.put("content-length", Integer.toString(body.length)); }
         static Reply ok(byte[] bytes) { Reply reply = new Reply(200, bytes); reply.headers.put("etag", "\"v1\""); return reply; }
         static Reply broken(byte[] bytes, int prefix) { Reply reply = ok(bytes); reply.failAfter = prefix; return reply; }
@@ -393,11 +847,12 @@ public final class ResourceInstallerTest {
     }
     private static final class FakeConnection extends HttpURLConnection {
         final Reply reply;
+        boolean disconnected;
         FakeConnection(URL url, Reply reply) { super(url); this.reply = reply; }
         public void connect() { }
-        public void disconnect() { }
+        public void disconnect() { disconnected = true; }
         public boolean usingProxy() { return false; }
-        public int getResponseCode() { return reply.code; }
+        public int getResponseCode() throws IOException { if (reply.headerFailure != null) throw reply.headerFailure; return reply.code; }
         public String getHeaderField(String name) { return reply.headers.get(name.toLowerCase(Locale.ROOT)); }
         public InputStream getInputStream() {
             if (reply.failAfter < 0) return new ByteArrayInputStream(reply.body);

@@ -16,11 +16,16 @@ public final class UpdateChannel {
         public final String baseUrl;
         public final JSONObject apk;
         public final long revision;
+        private final byte[] channelBytes;
         Selection(ResourceInstaller.Manifest manifest, String baseUrl, JSONObject apk, long revision) {
+            this(manifest, baseUrl, apk, revision, null);
+        }
+        Selection(ResourceInstaller.Manifest manifest, String baseUrl, JSONObject apk, long revision, byte[] channelBytes) {
             this.manifest = manifest; this.baseUrl = baseUrl; this.apk = apk; this.revision = revision;
+            this.channelBytes = channelBytes == null ? null : channelBytes.clone();
         }
     }
-    private final File directory;
+    private final File directory, completedMarker;
     private final String packageName, channelUrl;
     private final long gameVersionCode;
     private final Transport transport;
@@ -35,6 +40,7 @@ public final class UpdateChannel {
         repositoryUrl(channelUrl);
         File root = filesDir.getCanonicalFile();
         directory = new File(root, "resource-bootstrap-state/updates");
+        completedMarker = new File(root, "resource-bootstrap-state/complete.marker");
         File cursor = directory;
         while (!cursor.equals(root)) {
             if (Files.isSymbolicLink(cursor.toPath())) throw new IOException("更新缓存路径无效");
@@ -49,12 +55,12 @@ public final class UpdateChannel {
     }
     public Selection resolve(ResourceInstaller.Manifest embedded, String embeddedBaseUrl, boolean checkNetwork) throws IOException {
         if (transport instanceof HttpTransport) ((HttpTransport) transport).begin();
-        Selection fallback = new Selection(embedded, embeddedBaseUrl, null, 0);
-        try {
-            JSONObject cached = json(read(file("channel.json"), 128 * 1024));
-            fallback = select(cached, false);
-        } catch (Exception ignored) { /* Initial launch or invalid cache uses the embedded baseline. */ }
+        Selection fallback = installedSelection(embedded, embeddedBaseUrl);
         if (!checkNetwork) return fallback;
+        try {
+            Selection pending = select(json(read(file("pending-channel.json"), 128 * 1024)), false);
+            if (pending.revision >= fallback.revision) fallback = pending;
+        } catch (Exception ignored) { /* Incomplete metadata never replaces usable installed selection. */ }
         try {
             byte[] raw = transport.read(repositoryUrl(channelUrl), 128 * 1024);
             JSONObject channel = json(raw);
@@ -63,15 +69,42 @@ public final class UpdateChannel {
             JSONObject resources = channel.getJSONObject("resources");
             if (resources.getLong("gameVersionCode") != gameVersionCode) {
                 // A future game engine may need its new APK first; do not apply incompatible resources.
-                return new Selection(fallback.manifest, fallback.baseUrl, channel.optJSONObject("apk"), fallback.revision);
+                return new Selection(fallback.manifest, fallback.baseUrl, channel.optJSONObject("apk"), fallback.revision, fallback.channelBytes);
             }
             Selection candidate = select(channel, true);
-            atomicWrite(file("channel.json"), raw); // Manifest is durable before the pointer is committed.
+            atomicWrite(file("pending-channel.json"), raw); // Available for resume, not yet an installed release.
             return candidate;
         } catch (Exception unavailable) {
             // Network failure must not prevent already-installed resources from launching.
             return fallback;
         }
+    }
+
+    /** Only completed pending/legacy metadata may override the last installed selection, without network. */
+    public Selection installedSelection(ResourceInstaller.Manifest embedded, String embeddedBaseUrl) {
+        Selection installed = new Selection(embedded, embeddedBaseUrl, null, 0);
+        try { installed = select(json(read(file("installed-channel.json"), 128 * 1024)), false); }
+        catch (Exception ignored) { /* New installs use the APK baseline. */ }
+        for (String name : new String[] {"pending-channel.json", "channel.json"}) {
+            try {
+                Selection candidate = select(json(read(file(name), 128 * 1024)), false);
+                if (candidate.revision >= installed.revision && !Files.isSymbolicLink(completedMarker.toPath())
+                        && new String(read(completedMarker, 256), StandardCharsets.UTF_8)
+                            .equals("resource-bootstrap-v1\n" + candidate.manifest.identity + "\n")) installed = candidate;
+            } catch (Exception ignored) { /* Downloaded metadata alone never proves installed content exists. */ }
+        }
+        return installed;
+    }
+
+    /** Caller must complete ResourceInstaller.install successfully before advancing this pointer. */
+    public void commitInstalled(Selection installed) throws IOException {
+        if (installed.channelBytes == null) return;
+        try {
+            Selection checked = select(json(installed.channelBytes), false);
+            if (!checked.manifest.identity.equals(installed.manifest.identity)) throw new IOException("已安装资源与清单不一致");
+            atomicWrite(file("installed-channel.json"), installed.channelBytes);
+        } catch (IOException error) { throw error; }
+        catch (Exception invalid) { throw new IOException("无法保存已安装资源版本", invalid); }
     }
 
     private Selection select(JSONObject channel, boolean online) throws Exception {
@@ -102,7 +135,7 @@ public final class UpdateChannel {
                 || !resource.getString("resourceVersion").equals(manifest.resourceVersion))
             throw new IOException("更新清单与游戏不匹配");
         if (online) atomicWrite(manifestFile, payload);
-        return new Selection(manifest, base, channel.optJSONObject("apk"), channel.getLong("revision"));
+        return new Selection(manifest, base, channel.optJSONObject("apk"), channel.getLong("revision"), channel.toString().getBytes(StandardCharsets.UTF_8));
     }
 
     private void validateChannel(JSONObject channel) throws Exception {
@@ -147,7 +180,7 @@ public final class UpdateChannel {
         URL url = new URL(value);
         ResourceInstaller.validateUrl(url);
         if (!"github.com".equalsIgnoreCase(url.getHost()) || url.getQuery() != null
-                || !url.getPath().matches("/maxlzyver/(efootxi|73efootball)/releases/download/[A-Za-z0-9][A-Za-z0-9._-]*/([A-Za-z0-9][A-Za-z0-9._-]*)?"))
+                || !url.getPath().matches("/maxlzyver/(efootxi-test|efootxi|73efootball)/releases/download/[A-Za-z0-9][A-Za-z0-9._-]*/([A-Za-z0-9][A-Za-z0-9._-]*)?"))
             throw new IOException("更新地址必须属于 efootxi 发布仓库");
         return url;
     }

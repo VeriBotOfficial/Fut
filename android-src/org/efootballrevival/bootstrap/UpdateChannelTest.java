@@ -11,8 +11,8 @@ import org.json.*;
 public final class UpdateChannelTest {
     private static final String PACKAGE = "test.game";
     private static final long GAME = 311010101;
-    private static final String BASE = "https://github.com/maxlzyver/efootxi/releases/download/resources-v2/";
-    private static final String CHANNEL = "https://github.com/maxlzyver/efootxi/releases/download/update-channel/channel.json";
+    private static final String BASE = "https://github.com/maxlzyver/efootxi-test/releases/download/resources-v2/";
+    private static final String CHANNEL = "https://github.com/maxlzyver/efootxi-test/releases/download/updates/channel.json";
     private static int tests, assertions;
 
     public static void main(String[] args) throws Exception {
@@ -20,6 +20,9 @@ public final class UpdateChannelTest {
         offlineRestartRetainsDownloadedManifest();
         explicitOfflineModeUsesValidCacheWithoutTransport();
         explicitOfflineModeUsesEmbeddedWithoutTransport();
+        pendingUpdateDoesNotReplaceInstalledOffline();
+        completedPendingUpdateRecoversOfflineBeforeChannelCommit();
+        legacyCacheRemainsReadableForMigration();
         explicitOfflineModeRejectsCorruptCacheWithoutTransport();
         corruptedCacheFallsBackAndCanRecover();
         lowerRevisionCannotRollBackSelection();
@@ -39,7 +42,7 @@ public final class UpdateChannelTest {
         check(selected.baseUrl.equals(BASE), "selected resource base is from verified channel");
         check(transport.urls.equals(Arrays.asList(CHANNEL, BASE + "manifest.json")), "only index and manifest fetched");
         check(transport.limits.get(0) == 128 * 1024 && transport.limits.get(1) == f.remoteBytes.length, "network reads are bounded by declared metadata sizes");
-        check(cache(f, "channel.json").isFile(), "channel pointer persisted before game installation starts");
+        check(cache(f, "pending-channel.json").isFile(), "channel pointer persisted before game installation starts");
         check(Arrays.equals(Files.readAllBytes(cache(f, "manifest-" + UpdateChannel.hash(f.remoteBytes) + ".json").toPath()), f.remoteBytes), "manifest bytes durable before pointer use");
         check(!new File(f.root, "Download/content.bin").exists(), "selection never modifies game content");
         check(!new File(f.root, "resource-bootstrap-state/complete.marker").exists(), "selection does not falsely mark resource installation complete"); tests++;
@@ -55,7 +58,8 @@ public final class UpdateChannelTest {
     }
 
     private static void explicitOfflineModeUsesValidCacheWithoutTransport() throws Exception {
-        Fixture f = fixture(); client(f, remote(f.channel, f.remoteBytes)).resolve(f.embedded, BASE);
+        Fixture f = fixture(); UpdateChannel first = client(f, remote(f.channel, f.remoteBytes));
+        first.commitInstalled(first.resolve(f.embedded, BASE));
         JSONObject newer = copy(f.channel).put("revision", 99);
         Transport network = remote(newer, f.remoteBytes);
         UpdateChannel.Selection selected = client(f, network).resolve(f.embedded, BASE, false);
@@ -69,16 +73,98 @@ public final class UpdateChannelTest {
         UpdateChannel.Selection selected = client(f, network).resolve(f.embedded, BASE, false);
         check(network.urls.isEmpty() && network.limits.isEmpty(), "explicit offline mode makes zero transport calls when no cache exists");
         check(selected.manifest == f.embedded && selected.revision == 0 && selected.baseUrl.equals(BASE), "offline mode selects embedded baseline without a cache");
-        check(!cache(f, "channel.json").exists(), "offline baseline selection does not create an unverified channel pointer"); tests++;
+        check(!cache(f, "pending-channel.json").exists(), "offline baseline selection does not create an unverified channel pointer"); tests++;
     }
 
     private static void explicitOfflineModeRejectsCorruptCacheWithoutTransport() throws Exception {
-        Fixture f = fixture(); client(f, remote(f.channel, f.remoteBytes)).resolve(f.embedded, BASE);
+        Fixture f = fixture(); UpdateChannel first = client(f, remote(f.channel, f.remoteBytes));
+        first.commitInstalled(first.resolve(f.embedded, BASE));
         Files.write(cache(f, "manifest-" + UpdateChannel.hash(f.remoteBytes) + ".json").toPath(), bytes("corrupt cache"));
         Transport network = remote(f.channel, f.remoteBytes);
         UpdateChannel.Selection selected = client(f, network).resolve(f.embedded, BASE, false);
         check(network.urls.isEmpty() && network.limits.isEmpty(), "corrupt cache does not trigger a network repair in explicit offline mode");
         check(selected.manifest == f.embedded && selected.revision == 0, "offline mode rejects corrupt cached content and uses embedded baseline"); tests++;
+    }
+
+    private static void pendingUpdateDoesNotReplaceInstalledOffline() throws Exception {
+        Fixture f = fixture(); UpdateChannel first = client(f, remote(f.channel, f.remoteBytes));
+        UpdateChannel.Selection pending = first.resolve(f.embedded, BASE);
+        check(first.resolve(f.embedded, BASE, false).manifest == f.embedded, "uninstalled remote metadata cannot select pending resources offline");
+        first.commitInstalled(pending);
+        check(first.resolve(f.embedded, BASE, false).revision == 2, "successful install advances offline selection");
+        byte[] nextRaw = bytes(manifest("v3", GAME).toString());
+        JSONObject next = copy(f.channel).put("revision", 3).put("resources", resource(nextRaw, "v3", GAME));
+        UpdateChannel newer = client(f, remote(next, nextRaw));
+        UpdateChannel.Selection selected = newer.resolve(f.embedded, BASE);
+        check(selected.revision == 3, "new update selected for preparation");
+        Transport offline = new Transport();
+        check(client(f, offline).resolve(f.embedded, BASE, false).revision == 2 && offline.urls.isEmpty(), "unfinished update preserves installed selection and never networks offline");
+        newer.commitInstalled(selected);
+        check(newer.resolve(f.embedded, BASE, false).revision == 3, "only successful newer installation commits new version"); tests++;
+    }
+
+    private static void legacyCacheRemainsReadableForMigration() throws Exception {
+        Fixture f = fixture(); client(f, remote(f.channel, f.remoteBytes)).resolve(f.embedded, BASE);
+        Files.move(cache(f, "pending-channel.json").toPath(), cache(f, "channel.json").toPath());
+        Transport offline = new Transport(); UpdateChannel old = client(f, offline);
+        check(old.resolve(f.embedded, BASE, false).manifest == f.embedded, "uncompleted legacy pointer cannot displace embedded installed content offline");
+        Files.write(new File(f.root, "resource-bootstrap-state/complete.marker").toPath(),
+                bytes("resource-bootstrap-v1\n" + UpdateChannel.parseManifest(f.remoteBytes).identity + "\n"));
+        UpdateChannel.Selection legacy = old.resolve(f.embedded, BASE, false);
+        check(legacy.revision == 2 && offline.urls.isEmpty(), "v1.1 cached manifest remains readable without network");
+        old.commitInstalled(legacy);
+        check(cache(f, "installed-channel.json").isFile(), "validated legacy install can migrate its pointer"); tests++;
+    }
+
+    private static void completedPendingUpdateRecoversOfflineBeforeChannelCommit() throws Exception {
+        for (boolean hadCommittedRelease : new boolean[] {false, true}) {
+            Fixture f = fixture();
+            File content = new File(f.root, "Download/content.bin"); content.getParentFile().mkdirs();
+            Files.write(content.toPath(), bytes("content"));
+            ResourceInstaller.ConnectionFactory noNetwork = address -> {
+                throw new AssertionError("completed resource recovery must not open a connection");
+            };
+            if (hadCommittedRelease) {
+                byte[] oldRaw = bytes(manifest("v1", GAME).toString());
+                JSONObject oldChannel = copy(f.channel).put("revision", 1)
+                        .put("resources", resource(oldRaw, "v1", GAME));
+                UpdateChannel old = client(f, remote(oldChannel, oldRaw));
+                UpdateChannel.Selection installed = old.resolve(f.embedded, BASE);
+                new ResourceInstaller(f.root, installed.manifest, installed.baseUrl, null, noNetwork,
+                        directory -> Long.MAX_VALUE).setNetworkAllowed(false).install();
+                old.commitInstalled(installed);
+            }
+            UpdateChannel beforeCrash = client(f, remote(f.channel, f.remoteBytes));
+            UpdateChannel.Selection pending = beforeCrash.resolve(f.embedded, BASE);
+            File committedPointer = cache(f, "installed-channel.json");
+            byte[] previousPointer = committedPointer.isFile() ? Files.readAllBytes(committedPointer.toPath()) : null;
+            check(cache(f, "pending-channel.json").isFile(), "pending channel is durable before resource completion");
+            ResourceInstaller completed = new ResourceInstaller(f.root, pending.manifest, pending.baseUrl, null,
+                    noNetwork, directory -> Long.MAX_VALUE).setNetworkAllowed(false);
+            completed.install();
+            check(completed.isReady(), "real installer completed pending content before simulated process death");
+            check(new String(Files.readAllBytes(new File(f.root, "resource-bootstrap-state/complete.marker").toPath()),
+                    StandardCharsets.UTF_8).equals("resource-bootstrap-v1\n" + pending.manifest.identity + "\n"),
+                    "completion marker binds the pending manifest even before channel commit");
+            // Simulate process death here: do not call beforeCrash.commitInstalled(pending).
+            Transport offline = new Transport(); UpdateChannel restarted = client(f, offline);
+            UpdateChannel.Selection recovered = restarted.resolve(f.embedded, BASE, false);
+            check(recovered.revision == 2 && recovered.manifest.identity.equals(pending.manifest.identity),
+                    "offline restart recovers completed pending selection over absent or older committed pointer");
+            check(offline.urls.isEmpty() && offline.limits.isEmpty(), "crash recovery makes zero metadata transport calls");
+            check(new ResourceInstaller(f.root, recovered.manifest, recovered.baseUrl, null, noNetwork,
+                    directory -> Long.MAX_VALUE).setNetworkAllowed(false).isReady(),
+                    "recovered selection still passes independent resource readiness checks");
+            check(previousPointer == null ? !committedPointer.exists()
+                    : Arrays.equals(previousPointer, Files.readAllBytes(committedPointer.toPath())),
+                    "selecting completed pending metadata does not prematurely mutate the committed pointer");
+            restarted.commitInstalled(recovered);
+            Files.delete(cache(f, "pending-channel.json").toPath());
+            check(client(f, offline).resolve(f.embedded, BASE, false).manifest.identity.equals(pending.manifest.identity),
+                    "normal commit after crash recovery remains durable without pending metadata");
+            check(offline.urls.isEmpty(), "commit and subsequent offline restart make zero metadata transport calls");
+        }
+        tests++;
     }
 
     private static void corruptedCacheFallsBackAndCanRecover() throws Exception {
@@ -88,7 +174,7 @@ public final class UpdateChannelTest {
         check(client(f, new Transport()).resolve(f.embedded, BASE).manifest == f.embedded, "corrupt manifest cache falls back to embedded baseline");
         UpdateChannel.Selection repaired = client(f, remote(f.channel, f.remoteBytes)).resolve(f.embedded, BASE);
         check(repaired.revision == 2, "valid online manifest repairs corrupt cache");
-        Files.write(cache(f, "channel.json").toPath(), bytes("not JSON"));
+        Files.write(cache(f, "pending-channel.json").toPath(), bytes("not JSON"));
         check(client(f, new Transport()).resolve(f.embedded, BASE).manifest == f.embedded, "corrupt pointer cannot select an unverified manifest"); tests++;
     }
 
@@ -101,7 +187,7 @@ public final class UpdateChannelTest {
         UpdateChannel.Selection selected = client(f, transport).resolve(f.embedded, BASE);
         check(selected.revision == 2 && selected.manifest.resourceVersion.equals("v2"), "older channel revision cannot roll resources back");
         check(transport.urls.size() == 1, "older manifest is not downloaded");
-        check(new JSONObject(new String(Files.readAllBytes(cache(f, "channel.json").toPath()), StandardCharsets.UTF_8)).getLong("revision") == 2, "rollback does not replace durable channel pointer"); tests++;
+        check(new JSONObject(new String(Files.readAllBytes(cache(f, "pending-channel.json").toPath()), StandardCharsets.UTF_8)).getLong("revision") == 2, "rollback does not replace durable channel pointer"); tests++;
     }
 
     private static void futureGameResourcesKeepCurrentButOfferApk() throws Exception {
@@ -120,7 +206,7 @@ public final class UpdateChannelTest {
     private static void manifestHashAndLengthAreMandatory() throws Exception {
         Fixture f = fixture(); byte[] tampered = f.remoteBytes.clone(); tampered[tampered.length - 3] ^= 1;
         check(client(f, remote(f.channel, tampered)).resolve(f.embedded, BASE).manifest == f.embedded, "manifest SHA mismatch rejected");
-        check(!cache(f, "channel.json").exists(), "failed SHA cannot commit pointer");
+        check(!cache(f, "pending-channel.json").exists(), "failed SHA cannot commit pointer");
         check(client(f, remote(f.channel, Arrays.copyOf(f.remoteBytes, f.remoteBytes.length - 1))).resolve(f.embedded, BASE).manifest == f.embedded, "truncated manifest rejected");
         JSONObject excessive = copy(f.channel); excessive.getJSONObject("resources").put("bytes", 2 * 1024 * 1024 + 1);
         Transport transport = remote(excessive, f.remoteBytes);
@@ -170,6 +256,7 @@ public final class UpdateChannelTest {
                 "https://github.com/maxlzyver/efootxi/releases/download/v1/nested%2ffile.json"
         }) expectIo(() -> UpdateChannel.repositoryUrl(address), "update address cannot escape repository release assets");
         check(UpdateChannel.repositoryUrl(BASE).toString().equals(BASE), "resource base directory accepted");
+        check(UpdateChannel.repositoryUrl("https://github.com/maxlzyver/efootxi/releases/download/resources-311010101-v1/resources-01.zip") != null, "stable repository immutable assets remain readable");
         check(UpdateChannel.repositoryUrl("https://github.com/maxlzyver/73efootball/releases/download/resources-311010101-v1/resources-01.zip") != null, "original repository asset links retained for migration"); tests++;
     }
 

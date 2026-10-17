@@ -1,4 +1,4 @@
-"""Build efootxi 1.1 from the reviewed API31 package without rebuilding game code."""
+"""Build a local efootxi APK from the reviewed API31 package, preserving game code."""
 import copy
 import argparse
 import hashlib
@@ -33,8 +33,8 @@ def run(*arguments):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version', default='1.1')
-    parser.add_argument('--build-revision', type=int, default=1100)
+    parser.add_argument('--version', default='1.2.0')
+    parser.add_argument('--build-revision', type=int, default=1201)
     args = parser.parse_args()
     if not re.fullmatch(r'[0-9]+(?:\.[0-9]+){1,2}', args.version) or args.build_revision < 1:
         parser.error('Use a numeric release version and positive build revision')
@@ -58,7 +58,7 @@ def main():
         '--lib', ANDROID_JAR, '--output', dex, class_jar)
     config = {
         'baseUrl': 'https://github.com/maxlzyver/efootxi/releases/download/resources-311010101-v1/',
-        'channelUrl': 'https://github.com/maxlzyver/efootxi/releases/download/updates/channel.json',
+        'channelUrl': 'https://github.com/maxlzyver/efootxi-test/releases/download/updates/channel.json',
         'buildRevision': revision,
         'versionName': version,
     }
@@ -66,6 +66,29 @@ def main():
         'classes8.dex': (dex / 'classes.dex').read_bytes(),
         'assets/resource-bootstrap/config.json': json.dumps(config, ensure_ascii=False).encode('utf-8'),
     }
+    # Seed files are a reviewed, exact allowlist. They can be restored without downloading
+    # a nearly-1GB archive; immutable game content is never embedded here or exempted.
+    seed_policy = json.loads((ROOT / 'config/resource-seed-policy.json').read_text(encoding='utf-8'))
+    baseline_manifest = json.loads((ROOT / 'release/resources/manifest.json').read_text(encoding='utf-8'))
+    assert seed_policy['sourceResourceVersion'] == baseline_manifest['resourceVersion']
+    wanted = {entry['path']: entry for entry in seed_policy['entries']}
+    assert len(wanted) == len(seed_policy['entries']) == 125
+    policy_java = (ROOT / 'android-src/org/efootballrevival/bootstrap/ResourcePolicy.java').read_text(encoding='utf-8')
+    compiled_policy = {path: (int(size), digest) for path, size, digest in
+                       re.findall(r'values\.put\("([^"]+)", "(\d+):([0-9a-f]{64})"\)', policy_java)}
+    assert compiled_policy == {path: (entry['bytes'], entry['sha256']) for path, entry in wanted.items()}
+    additions = {}
+    for pack in baseline_manifest['files']:
+        with zipfile.ZipFile(ROOT / 'release/resources' / pack['name']) as resource_zip:
+            for entry in pack['entries']:
+                if entry['path'] not in wanted:
+                    continue
+                assert entry == wanted[entry['path']]
+                data = resource_zip.read(entry['path'])
+                assert len(data) == entry['bytes'] and hashlib.sha256(data).hexdigest() == entry['sha256']
+                additions['assets/resource-bootstrap/seeds/' + entry['path']] = data
+    assert len(additions) == len(wanted)
+    assert sum(map(len, additions.values())) == 2372924
     original_hashes = {}
     unsigned = WORK / 'unsigned.apk'
     with zipfile.ZipFile(SOURCE) as source, zipfile.ZipFile(unsigned, 'w', allowZip64=False) as output:
@@ -81,6 +104,9 @@ def main():
                     while block := reader.read(1024 * 1024):
                         member_hash.update(block); writer.write(block)
                 original_hashes[info.filename] = member_hash.hexdigest()
+        for name, data in additions.items():
+            assert name not in original_hashes
+            output.writestr(name, data, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
     print('Game payload copied; compiling and manifest changes limited to bootstrap/update support', flush=True)
     aligned = WORK / 'aligned.apk'
     run(SDK / 'zipalign.exe', '-f', '-P', '16', '4', unsigned, aligned)
@@ -110,18 +136,22 @@ def main():
         for info in archive.infolist():
             with archive.open(info) as stream:
                 current_hashes[info.filename] = hashlib.file_digest(stream, 'sha256').hexdigest()
-    assert original_hashes.keys() == current_hashes.keys()
-    changed = sorted(name for name in current_hashes if current_hashes[name] != original_hashes[name])
+    assert set(current_hashes) == set(original_hashes) | set(additions)
+    changed = sorted(name for name in original_hashes if current_hashes[name] != original_hashes[name])
     assert changed == sorted(replacements)
+    for name, data in additions.items():
+        assert current_hashes[name] == hashlib.sha256(data).hexdigest()
     assert apk.stat().st_size < 2 * 1024 ** 3
     metadata = {
         'buildRevision': revision, 'versionCode': 311010101, 'versionName': version,
-        'url': 'https://github.com/maxlzyver/efootxi/releases/download/v' + version + '/' + apk.name,
+        'url': 'https://github.com/maxlzyver/efootxi-test/releases/download/v' + version + '/' + apk.name,
         'sha256': sha256(apk), 'bytes': apk.stat().st_size,
         'signerCertificateSha256': CERT_SHA, 'minSdk': 31, 'abi': 'arm64-v8a',
     }
     report = dict(metadata, apk=apk.name, sourceSha256=SOURCE_SHA, changedEntries=changed,
                   unchangedEntries=len(original_hashes) - len(changed),
+                  addedSeedEntries=len(additions), addedSeedBytes=sum(map(len, additions.values())),
+                  distribution='local-only-not-published',
                   originalGameDexNativeAndResourcesUnchanged=True, samePackageAndSigner=True,
                   signatureVerification='passed-v3', alignment='4-byte-and-16KiB-passed',
                   fullMemberCrcAndSha256='passed', androidDeviceTest='not-performed')
