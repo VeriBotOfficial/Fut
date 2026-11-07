@@ -219,7 +219,7 @@ public final class UpdateChannel {
 
     private static final class HttpTransport implements Transport {
         private long deadline;
-        void begin() { deadline = System.nanoTime() + 8_000_000_000L; }
+        void begin() { deadline = System.nanoTime() + 3_500_000_000L; }
         public byte[] read(URL address, int limit) throws IOException {
             for (int redirect = 0; redirect <= 5; redirect++) {
                 ResourceInstaller.validateUrl(address);
@@ -227,8 +227,8 @@ public final class UpdateChannel {
                 if (remaining <= 0) throw new IOException("Update check timed out");
                 HttpURLConnection connection = (HttpURLConnection) address.openConnection();
                 connection.setInstanceFollowRedirects(false);
-                connection.setConnectTimeout((int) Math.min(2000, remaining));
-                connection.setReadTimeout((int) Math.min(2500, remaining));
+                connection.setConnectTimeout((int) Math.min(1200, remaining));
+                connection.setReadTimeout((int) Math.min(1800, remaining));
                 connection.setRequestProperty("Accept-Encoding", "identity");
                 connection.setRequestProperty("User-Agent", "efootxi/1.1");
                 connection.setRequestProperty("Cache-Control", "no-cache");
