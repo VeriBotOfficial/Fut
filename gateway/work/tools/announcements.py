@@ -60,7 +60,7 @@ def native_news(conn):
                 import project_info
                 body = match_diagnostics.report_text(conn, version=project_info.BUILD_LABEL)
             except Exception:
-                body = '暂时无法读取本地反馈信息。游戏存档已保留，请反馈机型、游戏版本和复现步骤。'
+                body = 'Unable to read local diagnostic information. Your game save is intact. When reporting the issue, include your device model, game version, and reproduction steps.'
         result.append({
             'news_id': nid, 'title': item['title'], 'date': item['date'],
             'body': body, 'readFlag': 'YES' if nid in seen else 'NO',
