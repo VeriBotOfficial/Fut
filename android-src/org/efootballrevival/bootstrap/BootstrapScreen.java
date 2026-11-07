@@ -153,7 +153,7 @@ public final class BootstrapScreen {
         content.setPadding(dp(22), dp(24), dp(22), dp(24));
         scroll.addView(content, new ScrollView.LayoutParams(-1, -2));
 
-        TextView brand = text("efootxi", 32, BLUE, true);
+        TextView brand = text("Fut", 32, BLUE, true);
         content.addView(brand, margin(0));
         version = text("", 16, MUTED, false);
         content.addView(version, margin(6));
@@ -203,14 +203,14 @@ public final class BootstrapScreen {
         content.addView(resourceVersion, margin(16));
         TextView projectNote = text("资源托管在 GitHub。下载慢或失败时，请更换可用、稳定的梯子（网络代理）和更快的网络后重试；下载速度仍取决于实际连接。资源完整后可离线游玩。\n问题反馈：lzyuan666666@gmail.com", 18, MUTED, false);
         content.addView(projectNote, margin(18));
-        TextView provenance = text("efootxi 第一版基于 73@7othree 版本开发，已获得修改许可。后续版本由 maxlzyver 持续修改与维护，具体变更以各版本更新公告为准。", 16, MUTED, false);
+        TextView provenance = text("Fut 由 Doruk Çavdar 维护。项目包含经许可使用的上游工作，来源说明见项目仓库。", 16, MUTED, false);
         android.text.SpannableString creditedSource = new android.text.SpannableString(provenance.getText());
         int authorStart = creditedSource.toString().indexOf("7othree");
         creditedSource.setSpan(new android.text.style.StyleSpan(Typeface.BOLD), authorStart, authorStart + 7,
                 android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         provenance.setText(creditedSource);
         content.addView(provenance, margin(12));
-        TextView projectAddress = text("项目地址：https://github.com/maxlzyver/efootxi\n更新公告请进入游戏，点击右上角通知图标查看。", 18, MUTED, false);
+        TextView projectAddress = text("项目地址：https://github.com/VeriBotOfficial/Fut\n更新公告请进入游戏，点击右上角通知图标查看。", 18, MUTED, false);
         projectAddress.setTextIsSelectable(true);
         android.text.util.Linkify.addLinks(projectAddress, android.text.util.Linkify.WEB_URLS);
         content.addView(projectAddress, margin(16));
