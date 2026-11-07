@@ -66,7 +66,7 @@ public final class ResourceBootstrap {
         });
         WeakReference<BootstrapScreen> screen = new WeakReference<BootstrapScreen>(null);
         WeakReference<Activity> activity = new WeakReference<Activity>(null);
-        volatile State state = State.note(BootstrapScreen.Stage.CHECKING, "正在读取资源状态", "请稍候…");
+        volatile State state = State.note(BootstrapScreen.Stage.CHECKING, "Reading resource status", "Please wait…");
         volatile State pausedFrom;
         volatile boolean running, resourcesReady, online, pauseRequested;
         boolean passNextLaunch, entering, started, enterAfterPause;
@@ -96,7 +96,7 @@ public final class ResourceBootstrap {
             running = true; pauseRequested = false; resourcesReady = false;
             installer = null; offeredUpdate = null; downloadedApk = null;
             resetSpeed();
-            state = State.note(BootstrapScreen.Stage.CHECKING, "正在检查本地资源", "已完成的内容会保留"); paint();
+            state = State.note(BootstrapScreen.Stage.CHECKING, "Checking local resources", "Completed data will be kept"); paint();
             worker.execute(new Runnable() {
                 public void run() {
                     State result;
@@ -106,7 +106,7 @@ public final class ResourceBootstrap {
                         ResourceInstaller.Manifest embedded = loadManifest(context);
                         PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
                         if (!embedded.packageName.equals(context.getPackageName()) || embedded.versionCode != info.getLongVersionCode())
-                            throw new IOException("安装包与资源版本不一致");
+                            throw new IOException("The APK and resource versions do not match");
                         JSONObject config = new JSONObject(readAsset(context, "resource-bootstrap/config.json"));
                         versionName = config.getString("versionName"); buildRevision = config.getLong("buildRevision");
                         resourceVersion = embedded.resourceVersion;
@@ -115,7 +115,7 @@ public final class ResourceBootstrap {
                         online = hasInternet(context);
                         channel = new UpdateChannel(context.getFilesDir(), context.getPackageName(), embedded.versionCode, config.getString("channelUrl"));
                         installed = channel.installedSelection(embedded, config.getString("baseUrl"));
-                        if (online) progress("检查更新", "正在检查是否有新资源", 0, 0);
+                        if (online) progress("Check for updates", "Checking for new resources", 0, 0);
                         selection = channel.resolve(embedded, config.getString("baseUrl"), online);
                         resourceVersion = selection.manifest.resourceVersion;
                         offeredUpdate = newerApk(selection);
@@ -128,7 +128,7 @@ public final class ResourceBootstrap {
                         result = readyState();
                     } catch (ResourceInstaller.PausedException paused) {
                         resourcesReady = previousResourcesUsable(context, installed, selection);
-                        result = pausedState("已暂停", "已完成的内容会保留，继续时从断点恢复");
+                        result = pausedState("Paused", "Completed data will be kept，继续时从断点恢复");
                     } catch (Exception error) {
                         // A new update may be incomplete. Only offer old content when the installer verifies it is still usable.
                         resourcesReady = previousResourcesUsable(context, installed, selection);
@@ -171,9 +171,9 @@ public final class ResourceBootstrap {
         }
 
         State readyState() {
-            if (offeredUpdate != null) return State.note(BootstrapScreen.Stage.UPDATE_AVAILABLE, "发现应用更新",
-                    "可更新至 " + offeredUpdate.versionName + "，也可以先进入游戏");
-            return new State(BootstrapScreen.Stage.READY, "资源已就绪", "正在进入游戏…", "", 1, 1,
+            if (offeredUpdate != null) return State.note(BootstrapScreen.Stage.UPDATE_AVAILABLE, "App update available",
+                    "Update available: " + offeredUpdate.versionName + ", or enter the game now");
+            return new State(BootstrapScreen.Stage.READY, "Resources ready", "Launching game…", "", 1, 1,
                     BootstrapScreen.ProgressUnit.NONE, 0, "", true);
         }
 
@@ -181,15 +181,15 @@ public final class ResourceBootstrap {
             if (running || offeredUpdate == null || installer == null || !resourcesReady) return;
             task = Task.APK; running = true; pauseRequested = false; downloadedApk = null;
             online = hasInternet(application); installer.resume(); installer.setNetworkAllowed(online); resetSpeed();
-            state = State.note(BootstrapScreen.Stage.CHECKING, "正在准备应用更新", "更新会覆盖当前应用并保留数据"); paint();
+            state = State.note(BootstrapScreen.Stage.CHECKING, "Preparing app update", "The update will replace the current app while keeping its data"); paint();
             worker.execute(new Runnable() {
                 public void run() {
                     State result;
                     try {
                         downloadedApk = ApkUpdater.downloadAndVerify(application, installer, offeredUpdate);
-                        result = State.note(BootstrapScreen.Stage.INSTALL_READY, "更新已下载", "点击安装更新，在系统页面确认覆盖安装");
+                        result = State.note(BootstrapScreen.Stage.INSTALL_READY, "Update downloaded", "Tap Install Update and confirm in Android's installer");
                     } catch (ResourceInstaller.PausedException paused) {
-                        result = pausedState("更新已暂停", "已保留下载进度，可以继续下载或先进入游戏");
+                        result = pausedState("更新Paused", "Download progress saved. You can resume or enter the game.");
                     } catch (Exception error) { result = failure(error); }
                     finish(result);
                 }
@@ -211,26 +211,26 @@ public final class ResourceBootstrap {
             if (message == null) message = error.getClass().getSimpleName();
             String human;
             if (error instanceof ResourceInstaller.OfflineRequiredException)
-                human = "当前没有网络，仍有必需资源未准备好。连接网络后可继续，已完成内容会保留。";
+                human = "You're offline and some required resources are still missing. Connect to a network to continue; completed downloads will be kept.";
             else if (error instanceof UnknownHostException || error instanceof SocketTimeoutException || message.contains("HTTP")
-                    || message.contains("resolve host") || message.contains("连接") || message.contains("下载"))
-                human = "暂时无法完成下载，请检查网络后重试。已下载内容会保留。";
-            else if (message.contains("空间")) human = message;
-            else human = "资源准备暂未完成，已保留现有文件。可重试或查看详细原因。";
+                    || message.contains("resolve host") || message.contains("connection") || message.contains("download"))
+                human = "暂时无法Completedownload，请检查网络后重试。已download内容会保留。";
+            else if (message.contains("storage")) human = message;
+            else human = "Resource setup is incomplete, but existing files have been kept. Retry or view the details.";
             StringBuilder details = new StringBuilder(error.getClass().getSimpleName()).append(": ").append(message);
             ResourceInstaller active = installer;
             if (active != null) {
                 List<String> diagnostics = active.diagnostics();
                 for (String item : diagnostics) { if (details.length() > 12000) break; details.append('\n').append(item); }
             }
-            return new State(BootstrapScreen.Stage.ERROR, task == Task.APK ? "应用更新未完成" : "资源准备未完成",
+            return new State(BootstrapScreen.Stage.ERROR, task == Task.APK ? "App update incomplete" : "Resource setup incomplete",
                     human, "", 0, 0, BootstrapScreen.ProgressUnit.NONE, 0, details.toString(), false);
         }
 
         public void onPause() {
             if (!running || installer == null) return;
             pausedFrom = state; pauseRequested = true; installer.requestPause();
-            state = State.note(BootstrapScreen.Stage.CHECKING, "正在暂停", "正在保存已完成的进度…"); paint();
+            state = State.note(BootstrapScreen.Stage.CHECKING, "Pausing", "Saving completed progress…"); paint();
         }
         public void onResume() { if (task == Task.APK) downloadUpdate(); else startResources(application); }
         public void onRetry() { onResume(); }
@@ -240,9 +240,9 @@ public final class ResourceBootstrap {
             if (running || downloadedApk == null || owner == null || owner.isFinishing()) return;
             try {
                 boolean opened = ApkUpdater.requestInstall(owner, downloadedApk);
-                state = State.note(BootstrapScreen.Stage.INSTALL_READY, "安装应用更新", opened
-                        ? "请在系统页面确认安装，取消后仍可进入游戏"
-                        : "请允许此应用安装更新，返回后再次点击安装更新");
+                state = State.note(BootstrapScreen.Stage.INSTALL_READY, "Install app update", opened
+                        ? "Confirm installation in Android's installer. You can still enter the game if you cancel."
+                        : "Allow this app to install updates, then return and tap Install Update again");
             } catch (Exception error) { state = failure(error); }
             paint();
         }
@@ -253,7 +253,7 @@ public final class ResourceBootstrap {
         }
         void enterGame() {
             if (!resourcesReady || running) return;
-            state = new State(BootstrapScreen.Stage.READY, "资源已就绪", "正在进入游戏…", "", 1, 1,
+            state = new State(BootstrapScreen.Stage.READY, "Resources ready", "Launching game…", "", 1, 1,
                     BootstrapScreen.ProgressUnit.NONE, 0, "", true); paint();
         }
 
@@ -261,13 +261,13 @@ public final class ResourceBootstrap {
             BootstrapScreen.Stage visual;
             BootstrapScreen.ProgressUnit unit = BootstrapScreen.ProgressUnit.NONE;
             String title, message; double speed = 0;
-            if ("自动重试".equals(stage)) {
-                visual = BootstrapScreen.Stage.DOWNLOADING; title = "连接中断，正在自动重试";
-                message = "已下载的内容会保留。网络恢复后会自动继续，也可以先暂停下载。";
+            if ("Automatic retry".equals(stage)) {
+                visual = BootstrapScreen.Stage.DOWNLOADING; title = "connection中断，正在Automatic retry";
+                message = "已download的内容会保留。网络恢复后会自动继续，也可以先暂停download。";
                 unit = BootstrapScreen.ProgressUnit.BYTES; resetSpeed();
-            } else if ("下载".equals(stage)) {
-                visual = BootstrapScreen.Stage.DOWNLOADING; title = task == Task.APK ? "正在下载应用更新" : "正在下载资源";
-                message = "已完成的内容会保留，中断后可以继续下载"; unit = BootstrapScreen.ProgressUnit.BYTES;
+            } else if ("download".equals(stage)) {
+                visual = BootstrapScreen.Stage.DOWNLOADING; title = task == Task.APK ? "正在download应用更新" : "正在download资源";
+                message = "Completed data will be kept，中断后可以继续download"; unit = BootstrapScreen.ProgressUnit.BYTES;
                 long now = SystemClock.elapsedRealtime();
                 synchronized (this) {
                     if (!detail.equals(speedTask) || done < speedBytes || speedTime == 0) {
@@ -278,15 +278,15 @@ public final class ResourceBootstrap {
                     }
                     speed = measuredSpeed;
                 }
-            } else if ("校验".equals(stage)) {
-                visual = BootstrapScreen.Stage.VERIFYING; title = task == Task.APK ? "正在校验应用更新" : "正在校验本地资源";
-                message = "正在读取本地文件，不消耗流量"; unit = BootstrapScreen.ProgressUnit.BYTES;
-            } else if (stage.equals("准备") || stage.contains("解压") || stage.contains("部署") || stage.contains("安装") || stage.contains("导入")) {
-                visual = BootstrapScreen.Stage.DEPLOYING; title = "正在安装资源";
-                message = "正在保存已验证的文件，请稍候"; unit = BootstrapScreen.ProgressUnit.BYTES;
+            } else if ("Verification".equals(stage)) {
+                visual = BootstrapScreen.Stage.VERIFYING; title = task == Task.APK ? "正在Verification应用更新" : "正在Verification本地资源";
+                message = "Reading local files; no data usage"; unit = BootstrapScreen.ProgressUnit.BYTES;
+            } else if (stage.equals("Setup") || stage.contains("Extracting") || stage.contains("Deploying") || stage.contains("Installing") || stage.contains("Importing")) {
+                visual = BootstrapScreen.Stage.DEPLOYING; title = "正在Installing资源";
+                message = "Saving verified files. Please wait."; unit = BootstrapScreen.ProgressUnit.BYTES;
             } else {
-                visual = BootstrapScreen.Stage.CHECKING; title = "完成".equals(stage) ? "资源检查完成" : stage.equals("检查更新") ? "正在检查更新" : "正在检查本地资源";
-                message = online ? "完整资源会继续复用" : "离线使用本地资源，不检查远程更新";
+                visual = BootstrapScreen.Stage.CHECKING; title = "Complete".equals(stage) ? "资源检查Complete" : stage.equals("Check for updates") ? "正在Check for updates" : "Checking local resources";
+                message = online ? "Verified resources will be reused" : "Using local resources offline; remote updates are not checked";
                 if (total > 0) unit = BootstrapScreen.ProgressUnit.FILES;
             }
             if (pauseRequested) return;
@@ -322,7 +322,7 @@ public final class ResourceBootstrap {
                     .canDownloadUpdate(optional && value.stage == BootstrapScreen.Stage.UPDATE_AVAILABLE && offeredUpdate != null && downloadedApk == null)
                     .canInstallUpdate(optional && downloadedApk != null)
                     .canEnterGame(resourcesReady && (!running || task == Task.APK))
-                    .enterGameLabel(running ? "暂停更新并进入游戏" : "进入游戏").build();
+                    .enterGameLabel(running ? "Pause update and enter game" : "进入游戏").build();
             current.render(model);
             if (running) owner.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             else owner.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -335,7 +335,7 @@ public final class ResourceBootstrap {
                         try { owner.recreate(); }
                         catch (RuntimeException error) {
                             passNextLaunch = false; entering = false;
-                            state = State.note(BootstrapScreen.Stage.ERROR, "资源已就绪", "请退出后重新打开游戏"); paint();
+                            state = State.note(BootstrapScreen.Stage.ERROR, "Resources ready", "请退出后重新打开游戏"); paint();
                         }
                     }
                 });
