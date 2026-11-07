@@ -15,7 +15,7 @@ _STAGES = {'prepared': 'Opponent received', 'started': 'Match-start data returne
            'rejected': 'Request validation failed'}
 _COMMANDS = {'CMD_START_GAME': 'Start match', 'CMD_GET_VSCOM_GAME_RESULT': 'Submit match result',
              'CMD_GET_VSCOM_OPPONENT': 'Get opponent', 'CMD_GET_MYCLUB_VSCOM_OPPONENT': 'Get opponent',
-             'CMD_SET_MYCLUB_SPECIAL_DREAM_SQUAD_INFO': '保存My League阵容'}
+             'CMD_SET_MYCLUB_SPECIAL_DREAM_SQUAD_INFO': 'Save My League squad'}
 
 
 def _code(value):
@@ -75,7 +75,7 @@ def report_text(conn, version='1.2'):
         if event == 'started':
             lines.append('Match-start data was returned to the game, but no result has been received yet. Check the actual game screen to confirm whether the match loaded.')
         elif event == 'prepared':
-            lines.append('Opponent received，尚未确认进入比赛。')
+            lines.append('Opponent data was received, but entry into the match has not been confirmed.')
         lines.append('Game-reported end reason: ' + _code(entry.get('abnormalend_reason')))
         lines.append('Game-reported forfeit flag: ' + _code(entry.get('intentional_give_up')))
         resolved = entry.get('settlement') or {}
