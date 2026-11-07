@@ -84,7 +84,7 @@ class StableIdentityTest(unittest.TestCase):
         self.assertEqual(root[(axml.ANDROID_NS, 'versionCode')], (16, 311010101))
         self.assertEqual(root[(axml.ANDROID_NS, 'versionName')], (3, '1.2'))
         app = next(attrs for name, attrs in nodes(self.updated) if name == 'application')
-        self.assertEqual(app[(axml.ANDROID_NS, 'label')], (3, 'efootxi'))
+        self.assertEqual(app[(axml.ANDROID_NS, 'label')], (3, 'Fut'))
 
     def test_private_provider_and_permission_namespaces_remain_the_released_identity(self):
         before = [(name, attrs) for name, attrs in nodes(self.original)
