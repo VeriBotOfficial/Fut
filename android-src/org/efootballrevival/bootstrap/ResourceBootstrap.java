@@ -265,7 +265,7 @@ public final class ResourceBootstrap {
                 visual = BootstrapScreen.Stage.DOWNLOADING; title = "connection中断，正在Automatic retry";
                 message = "已download的内容会保留。网络恢复后会自动继续，也可以先暂停download。";
                 unit = BootstrapScreen.ProgressUnit.BYTES; resetSpeed();
-            } else if ("download".equals(stage)) {
+            } else if ("Download".equals(stage)) {
                 visual = BootstrapScreen.Stage.DOWNLOADING; title = task == Task.APK ? "正在download应用更新" : "正在download资源";
                 message = "Completed data will be kept，中断后可以继续download"; unit = BootstrapScreen.ProgressUnit.BYTES;
                 long now = SystemClock.elapsedRealtime();
