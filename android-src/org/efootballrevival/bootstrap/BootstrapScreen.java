@@ -66,7 +66,7 @@ public final class BootstrapScreen {
         public static final class Builder {
             private final Stage stage;
             private String versionName = "", resourceVersion = "", title = "", message = "", taskLabel = "";
-            private String details = "", errorDetails = "", enterGameLabel = "进入游戏";
+            private String details = "", errorDetails = "", enterGameLabel = "Enter Game";
             private long buildRevision, done, total;
             private ProgressUnit unit = ProgressUnit.NONE;
             private double bytesPerSecond;
@@ -201,20 +201,20 @@ public final class BootstrapScreen {
         resourceVersion = text("", 16, MUTED, false);
         resourceVersion.setTextIsSelectable(true);
         content.addView(resourceVersion, margin(16));
-        TextView projectNote = text("资源托管在 GitHub。下载慢或失败时，请更换可用、稳定的网络后重试；下载速度取决于实际连接。资源完整后可离线游玩。\n问题反馈请使用 GitHub Issues。", 18, MUTED, false);
+        TextView projectNote = text("Game resources are hosted on GitHub. If downloads are slow or fail, switch to a stable network and try again. Download speed depends on your connection. Once all resources are installed, you can play offline.\nFor support, use GitHub Issues.", 18, MUTED, false);
         content.addView(projectNote, margin(18));
-        TextView provenance = text("Fut 由 Doruk Çavdar 维护。项目包含经许可使用的上游工作，来源说明见项目仓库。", 16, MUTED, false);
+        TextView provenance = text("Fut is maintained by Doruk Çavdar. This project includes upstream work used with permission; see the repository for attribution.", 16, MUTED, false);
         android.text.SpannableString creditedSource = new android.text.SpannableString(provenance.getText());
         int authorStart = creditedSource.toString().indexOf("7othree");
         creditedSource.setSpan(new android.text.style.StyleSpan(Typeface.BOLD), authorStart, authorStart + 7,
                 android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         provenance.setText(creditedSource);
         content.addView(provenance, margin(12));
-        TextView projectAddress = text("项目地址：https://github.com/VeriBotOfficial/Fut\n问题反馈：https://github.com/VeriBotOfficial/Fut/issues\n更新公告请进入游戏，点击右上角通知图标查看。", 18, MUTED, false);
+        TextView projectAddress = text("Project: https://github.com/VeriBotOfficial/Fut\nSupport: https://github.com/VeriBotOfficial/Fut/issues\nupdate公告请Enter Game，点击右上角通知图标查看。", 18, MUTED, false);
         projectAddress.setTextIsSelectable(true);
         android.text.util.Linkify.addLinks(projectAddress, android.text.util.Linkify.WEB_URLS);
         content.addView(projectAddress, margin(16));
-        errorToggle = button("查看错误详情");
+        errorToggle = button("View error details");
         styleButton(errorToggle, false);
         errorToggle.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View view) {
@@ -229,7 +229,7 @@ public final class BootstrapScreen {
         technicalDetails.setPadding(dp(16), dp(16), dp(16), dp(16));
         technicalDetails.setBackground(shape(PALE, 12, LINE));
         content.addView(technicalDetails, margin(10));
-        TextView scrollHint = text("上下滑动可查看完整信息", 16, MUTED, false);
+        TextView scrollHint = text("Scroll to view all information", 16, MUTED, false);
         scrollHint.setGravity(Gravity.CENTER);
         content.addView(scrollHint, margin(24));
 
@@ -239,22 +239,22 @@ public final class BootstrapScreen {
         actions.setBackgroundColor(Color.WHITE);
         actions.setElevation(dp(4));
         root.addView(actions, new LinearLayout.LayoutParams(-1, -2));
-        enterGame = action("进入游戏", new Runnable() {
+        enterGame = action("Enter Game", new Runnable() {
             @Override public void run() { if (model != null && model.canEnterGame) BootstrapScreen.this.listener.onEnterGame(); }
         });
-        installUpdate = action("安装应用更新", new Runnable() {
+        installUpdate = action("Install app update", new Runnable() {
             @Override public void run() { if (model != null && model.canInstallUpdate) BootstrapScreen.this.listener.onInstallUpdate(); }
         });
-        downloadUpdate = action("下载应用更新", new Runnable() {
+        downloadUpdate = action("Download app update", new Runnable() {
             @Override public void run() { if (model != null && model.canDownloadUpdate) BootstrapScreen.this.listener.onDownloadUpdate(); }
         });
-        resume = action("继续下载", new Runnable() {
+        resume = action("Resume download", new Runnable() {
             @Override public void run() { if (model != null && model.canResume) BootstrapScreen.this.listener.onResume(); }
         });
-        retry = action("重试", new Runnable() {
+        retry = action("Retry", new Runnable() {
             @Override public void run() { if (model != null && model.canRetry) BootstrapScreen.this.listener.onRetry(); }
         });
-        pause = action("暂停下载", new Runnable() {
+        pause = action("Pause download", new Runnable() {
             @Override public void run() { if (model != null && model.canPause) BootstrapScreen.this.listener.onPause(); }
         });
         footer = text("", 16, MUTED, false);
@@ -270,23 +270,23 @@ public final class BootstrapScreen {
     public void render(Model next) {
         if (!alive() || next == null) return;
         model = next;
-        version.setText("应用 " + (next.versionName.isEmpty() ? "—" : next.versionName)
-                + "  ·  构建 " + (next.buildRevision > 0 ? String.valueOf(next.buildRevision) : "—"));
-        network.setText(next.online ? "网络已连接" : "当前离线");
+        version.setText("App " + (next.versionName.isEmpty() ? "—" : next.versionName)
+                + "  ·  Build " + (next.buildRevision > 0 ? String.valueOf(next.buildRevision) : "—"));
+        network.setText(next.online ? "Connected" : "Offline");
         setTextIfChanged(stageLabel, stageName(next.stage));
         setTextIfChanged(heading, next.title.isEmpty() ? defaultTitle(next.stage) : next.title);
         setTextIfChanged(message, next.message.isEmpty() ? defaultMessage(next.stage) : next.message);
-        resourceState.setText(next.resourcesReady ? "本地资源：完整可用"
-                : next.stage == Stage.ERROR ? "本地资源：尚未确认完整"
-                : next.stage == Stage.PAUSED ? "本地资源：准备未完成"
-                : next.stage == Stage.CHECKING || next.stage == Stage.VERIFYING ? "本地资源：正在确认"
-                : "本地资源：准备中");
+        resourceState.setText(next.resourcesReady ? "Game resources: Ready"
+                : next.stage == Stage.ERROR ? "Game resources: Not yet verified"
+                : next.stage == Stage.PAUSED ? "Game resources: Setup incomplete"
+                : next.stage == Stage.CHECKING || next.stage == Stage.VERIFYING ? "Game resources: Checking"
+                : "Game resources: Preparing");
         resourceState.setTextColor(next.resourcesReady ? Color.rgb(40, 117, 82) : MUTED);
         boolean active = next.stage == Stage.CHECKING || next.stage == Stage.VERIFYING
                 || next.stage == Stage.DOWNLOADING || next.stage == Stage.DEPLOYING;
         boolean showProgress = active || (next.stage == Stage.PAUSED && next.total > 0);
         task.setVisibility(showProgress ? View.VISIBLE : View.GONE);
-        task.setText(next.taskLabel.isEmpty() ? stageName(next.stage) + "进度" : next.taskLabel);
+        task.setText(next.taskLabel.isEmpty() ? stageName(next.stage) + " progress" : next.taskLabel);
         progress.setVisibility(showProgress ? View.VISIBLE : View.GONE);
         amount.setVisibility(showProgress ? View.VISIBLE : View.GONE);
         percentage.setVisibility(showProgress && next.total > 0 ? View.VISIBLE : View.GONE);
@@ -299,27 +299,27 @@ public final class BootstrapScreen {
             if (next.unit == ProgressUnit.BYTES)
                 amount.setText(bytes(next.done) + " / " + bytes(next.total));
             else if (next.unit == ProgressUnit.FILES)
-                amount.setText(next.done + " / " + next.total + " 个文件");
+                amount.setText(next.done + " / " + next.total + " files");
             else amount.setText(percent);
             progress.setContentDescription(task.getText() + "，" + amount.getText());
         } else {
-            amount.setText("正在处理，请稍候");
-            progress.setContentDescription(task.getText() + "，总量待确认");
+            amount.setText("Working…");
+            progress.setContentDescription(task.getText() + ", total pending");
         }
         boolean showSpeed = next.stage == Stage.DOWNLOADING && next.bytesPerSecond > 0;
         speed.setVisibility(showSpeed ? View.VISIBLE : View.GONE);
-        if (showSpeed) speed.setText("下载速度  " + bytes((long) next.bytesPerSecond) + "/s");
+        if (showSpeed) speed.setText("Download speed  " + bytes((long) next.bytesPerSecond) + "/s");
         notes.setText(next.details);
         notes.setVisibility(next.details.isEmpty() ? View.GONE : View.VISIBLE);
-        resourceVersion.setText("资源版本  " + next.resourceVersion);
+        resourceVersion.setText("Resource version  " + next.resourceVersion);
         resourceVersion.setVisibility(next.resourceVersion.isEmpty() ? View.GONE : View.VISIBLE);
         if (!next.errorDetails.equals(lastError)) { lastError = next.errorDetails; detailsExpanded = false; }
         technicalDetails.setText(next.errorDetails);
         updateErrorDetails();
 
-        enterGame.setText(next.enterGameLabel.isEmpty() ? "进入游戏" : next.enterGameLabel);
-        pause.setText(next.stage == Stage.DOWNLOADING ? "暂停下载" : next.stage == Stage.VERIFYING ? "暂停校验" : "暂停准备");
-        resume.setText(next.title.contains("更新") ? "继续更新" : "继续准备");
+        enterGame.setText(next.enterGameLabel.isEmpty() ? "Enter Game" : next.enterGameLabel);
+        pause.setText(next.stage == Stage.DOWNLOADING ? "Pause download" : next.stage == Stage.VERIFYING ? "Pause verification" : "Pause setup");
+        resume.setText(next.title.contains("update") ? "继续update" : "Resume setup");
         Button[] buttons = { enterGame, installUpdate, downloadUpdate, resume, retry, pause };
         boolean[] allowed = { next.canEnterGame, next.canInstallUpdate, next.canDownloadUpdate,
                 next.canResume, next.canRetry, next.canPause };
@@ -338,10 +338,10 @@ public final class BootstrapScreen {
                 hasButton = true;
             }
         }
-        String footerText = next.stage == Stage.PAUSED ? "已下载的内容会保留"
-                : next.canInstallUpdate ? "请在系统安装界面确认更新"
-                : next.canPause ? "暂停后会保留已完成内容"
-                : next.resourcesReady && !next.online ? "使用本地资源，无需等待联网"
+        String footerText = next.stage == Stage.PAUSED ? "Downloaded data will be kept"
+                : next.canInstallUpdate ? "请在系统安装界面确认update"
+                : next.canPause ? "Completed data will be kept when paused"
+                : next.resourcesReady && !next.online ? "Using local resources; no network wait required"
                 : "";
         footer.setText(footerText);
         footer.setVisibility(footerText.isEmpty() ? View.GONE : View.VISIBLE);
@@ -351,8 +351,8 @@ public final class BootstrapScreen {
     private void updateErrorDetails() {
         boolean available = model != null && !model.errorDetails.isEmpty();
         errorToggle.setVisibility(available ? View.VISIBLE : View.GONE);
-        errorToggle.setText(detailsExpanded ? "收起错误详情" : "查看错误详情");
-        errorToggle.setContentDescription(detailsExpanded ? "收起错误详情，当前已展开" : "查看错误详情，当前已收起");
+        errorToggle.setText(detailsExpanded ? "Hide error details" : "View error details");
+        errorToggle.setContentDescription(detailsExpanded ? "Hide error details，currently expanded" : "View error details，currently collapsed");
         technicalDetails.setVisibility(available && detailsExpanded ? View.VISIBLE : View.GONE);
     }
 
@@ -432,43 +432,43 @@ public final class BootstrapScreen {
 
     private static String stageName(Stage stage) {
         switch (stage) {
-            case VERIFYING: return "本地校验";
-            case DOWNLOADING: return "正在下载";
-            case DEPLOYING: return "正在部署";
-            case READY: return "准备完成";
-            case PAUSED: return "已暂停";
-            case ERROR: return "需要处理";
-            case UPDATE_AVAILABLE: return "应用更新";
-            case INSTALL_READY: return "等待安装";
-            default: return "检查状态";
+            case VERIFYING: return "Verifying files";
+            case DOWNLOADING: return "Downloading";
+            case DEPLOYING: return "Installing";
+            case READY: return "Ready";
+            case PAUSED: return "Paused";
+            case ERROR: return "Action required";
+            case UPDATE_AVAILABLE: return "应用update";
+            case INSTALL_READY: return "Ready to install";
+            default: return "Checking status";
         }
     }
 
     private static String defaultTitle(Stage stage) {
         switch (stage) {
-            case VERIFYING: return "检查本地资源";
-            case DOWNLOADING: return "正在下载资源";
-            case DEPLOYING: return "正在准备游戏资源";
-            case READY: return "准备好，开场吧";
-            case PAUSED: return "下载已暂停";
-            case ERROR: return "准备暂时中断";
-            case UPDATE_AVAILABLE: return "有新的应用版本";
-            case INSTALL_READY: return "更新已下载完成";
-            default: return "正在检查资源状态";
+            case VERIFYING: return "Checking local resources";
+            case DOWNLOADING: return "Downloading资源";
+            case DEPLOYING: return "Preparing game resources";
+            case READY: return "Ready. Let's play.";
+            case PAUSED: return "下载Paused";
+            case ERROR: return "Setup interrupted";
+            case UPDATE_AVAILABLE: return "App update available";
+            case INSTALL_READY: return "update已下载完成";
+            default: return "Checking resource status";
         }
     }
 
     private static String defaultMessage(Stage stage) {
         switch (stage) {
-            case VERIFYING: return "正在读取本地文件，不消耗流量。";
-            case DOWNLOADING: return "已下载的完整内容会保留。";
-            case DEPLOYING: return "正在整理本地资源，请稍候。";
-            case READY: return "所需资源已准备完整，可以进入游戏。";
-            case PAUSED: return "已保存下载进度，可继续完成准备。";
-            case ERROR: return "暂时无法完成准备，请查看提示后重试。";
-            case UPDATE_AVAILABLE: return "可以先进入游戏，稍后再更新应用。";
-            case INSTALL_READY: return "安装时请在系统界面确认更新。";
-            default: return "正在读取已安装资源与版本信息。";
+            case VERIFYING: return "Reading local files. No data usage.";
+            case DOWNLOADING: return "Completed downloads will be kept.";
+            case DEPLOYING: return "Organizing local game files…";
+            case READY: return "所需资源已准备完整，可以Enter Game。";
+            case PAUSED: return "已保存下载 progress，可继续完成准备。";
+            case ERROR: return "暂时无法完成准备，请查看提示后Retry。";
+            case UPDATE_AVAILABLE: return "可以先Enter Game，稍后再update应用。";
+            case INSTALL_READY: return "安装时请在系统界面确认update。";
+            default: return "Reading installed resources and version information.";
         }
     }
 }
