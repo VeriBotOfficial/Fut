@@ -76,6 +76,8 @@ public final class ResourceBootstrap {
         volatile long buildRevision = 1206;
         volatile ApkUpdater.Info offeredUpdate;
         volatile File downloadedApk;
+        volatile UpdateChannel activeChannel;
+        volatile UpdateChannel.Selection activeSelection;
         Context application;
         private boolean paintQueued;
         private long lastPaint, speedTime, speedBytes;
@@ -120,12 +122,27 @@ public final class ResourceBootstrap {
                         resourceVersion = selection.manifest.resourceVersion;
                         offeredUpdate = newerApk(selection);
                         installer = createInstaller(context, selection, online);
+                        activeChannel = channel;
+                        activeSelection = selection;
                         if (pauseRequested) installer.requestPause();
-                        installer.install();
-                        resourcesReady = true;
-                        try { channel.commitInstalled(selection); }
-                        catch (IOException ignored) { /* Complete content remains usable if optional metadata commit fails. */ }
-                        result = readyState();
+
+                        // First-time installs stop here and wait for one explicit Download tap.
+                        // Existing installs are checked against their durable receipt, not re-downloaded.
+                        boolean existingReady = installed != null
+                                && createInstaller(context, installed, false).isReady();
+                        if (!existingReady) {
+                            resourcesReady = false;
+                            result = State.note(BootstrapScreen.Stage.NEEDS_DOWNLOAD,
+                                    "Ready to download", "Download the game data once. It will be kept on this device.");
+                        } else {
+                            if (!installed.manifest.identity.equals(selection.manifest.identity)) {
+                                installer.install();
+                            }
+                            resourcesReady = true;
+                            try { channel.commitInstalled(selection); }
+                            catch (IOException ignored) { /* Verified game data remains usable. */ }
+                            result = readyState();
+                        }
                     } catch (ResourceInstaller.PausedException paused) {
                         resourcesReady = previousResourcesUsable(context, installed, selection);
                         result = pausedState("Paused", "Completed data will be kept. Resume from where you left off.");
@@ -171,10 +188,43 @@ public final class ResourceBootstrap {
         }
 
         State readyState() {
-            if (offeredUpdate != null) return State.note(BootstrapScreen.Stage.UPDATE_AVAILABLE, "App update available",
-                    "Update available: " + offeredUpdate.versionName + ", or enter the game now");
-            return new State(BootstrapScreen.Stage.READY, "Resources ready", "Launching game…", "", 1, 1,
+            // App updates are optional and must never hold up the normal game launch.
+            return new State(BootstrapScreen.Stage.READY, "Game data ready", "Starting game…", "", 1, 1,
                     BootstrapScreen.ProgressUnit.NONE, 0, "", true);
+        }
+
+        void downloadResources() {
+            if (running || resourcesReady || installer == null) return;
+            task = Task.RESOURCES;
+            running = true;
+            pauseRequested = false;
+            online = hasInternet(application);
+            installer.resume();
+            installer.setNetworkAllowed(online);
+            resetSpeed();
+            state = State.note(BootstrapScreen.Stage.CHECKING, "Preparing download", "Your progress will be saved automatically");
+            paint();
+            worker.execute(new Runnable() {
+                public void run() {
+                    State result;
+                    try {
+                        installer.install();
+                        resourcesReady = true;
+                        UpdateChannel channel = activeChannel;
+                        UpdateChannel.Selection selection = activeSelection;
+                        if (channel != null && selection != null) {
+                            try { channel.commitInstalled(selection); }
+                            catch (IOException ignored) { }
+                        }
+                        result = readyState();
+                    } catch (ResourceInstaller.PausedException paused) {
+                        result = pausedState("Download paused", "Your downloaded data has been saved.");
+                    } catch (Exception error) {
+                        result = failure(error);
+                    }
+                    finish(result);
+                }
+            });
         }
 
         void downloadUpdate() {
@@ -232,8 +282,13 @@ public final class ResourceBootstrap {
             pausedFrom = state; pauseRequested = true; installer.requestPause();
             state = State.note(BootstrapScreen.Stage.CHECKING, "Pausing", "Saving completed progress…"); paint();
         }
-        public void onResume() { if (task == Task.APK) downloadUpdate(); else startResources(application); }
-        public void onRetry() { onResume(); }
+        public void onResume() { if (task == Task.APK) downloadUpdate(); else downloadResources(); }
+        public void onRetry() {
+            if (task == Task.APK) downloadUpdate();
+            else if (installer != null) downloadResources();
+            else startResources(application);
+        }
+        public void onDownloadResources() { downloadResources(); }
         public void onDownloadUpdate() { downloadUpdate(); }
         public void onInstallUpdate() {
             Activity owner = activity.get();
@@ -319,6 +374,7 @@ public final class ResourceBootstrap {
                     .details("App " + versionName + " · Build " + buildRevision + "\nResources " + resourceVersion)
                     .errorDetails(value.error).canPause(mayPause).canResume(paused && !running)
                     .canRetry(failed && !running && downloadedApk == null)
+                    .canDownloadResources(!running && !resourcesReady && value.stage == BootstrapScreen.Stage.NEEDS_DOWNLOAD)
                     .canDownloadUpdate(optional && value.stage == BootstrapScreen.Stage.UPDATE_AVAILABLE && offeredUpdate != null && downloadedApk == null)
                     .canInstallUpdate(optional && downloadedApk != null)
                     .canEnterGame(resourcesReady && (!running || task == Task.APK))
