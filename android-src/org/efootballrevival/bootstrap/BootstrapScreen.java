@@ -210,7 +210,7 @@ public final class BootstrapScreen {
                 android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         provenance.setText(creditedSource);
         content.addView(provenance, margin(12));
-        TextView projectAddress = text("Project: https://github.com/VeriBotOfficial/Fut\nSupport: https://github.com/VeriBotOfficial/Fut/issues\nupdate公告请Enter Game，点击右上角通知图标查看。", 18, MUTED, false);
+        TextView projectAddress = text("Project: https://github.com/VeriBotOfficial/Fut\nSupport: https://github.com/VeriBotOfficial/Fut/issues\nTo read release notes, open the game and tap the notification icon in the top-right corner.", 18, MUTED, false);
         projectAddress.setTextIsSelectable(true);
         android.text.util.Linkify.addLinks(projectAddress, android.text.util.Linkify.WEB_URLS);
         content.addView(projectAddress, margin(16));
@@ -319,7 +319,7 @@ public final class BootstrapScreen {
 
         enterGame.setText(next.enterGameLabel.isEmpty() ? "Enter Game" : next.enterGameLabel);
         pause.setText(next.stage == Stage.DOWNLOADING ? "Pause download" : next.stage == Stage.VERIFYING ? "Pause verification" : "Pause setup");
-        resume.setText(next.title.contains("update") ? "继续update" : "Resume setup");
+        resume.setText(next.title.contains("update") ? "Resume update" : "Resume setup");
         Button[] buttons = { enterGame, installUpdate, downloadUpdate, resume, retry, pause };
         boolean[] allowed = { next.canEnterGame, next.canInstallUpdate, next.canDownloadUpdate,
                 next.canResume, next.canRetry, next.canPause };
@@ -339,7 +339,7 @@ public final class BootstrapScreen {
             }
         }
         String footerText = next.stage == Stage.PAUSED ? "Downloaded data will be kept"
-                : next.canInstallUpdate ? "请在系统安装界面确认update"
+                : next.canInstallUpdate ? "Confirm the update in Android's installer"
                 : next.canPause ? "Completed data will be kept when paused"
                 : next.resourcesReady && !next.online ? "Using local resources; no network wait required"
                 : "";
@@ -438,7 +438,7 @@ public final class BootstrapScreen {
             case READY: return "Ready";
             case PAUSED: return "Paused";
             case ERROR: return "Action required";
-            case UPDATE_AVAILABLE: return "应用update";
+            case UPDATE_AVAILABLE: return "App update";
             case INSTALL_READY: return "Ready to install";
             default: return "Checking status";
         }
@@ -447,13 +447,13 @@ public final class BootstrapScreen {
     private static String defaultTitle(Stage stage) {
         switch (stage) {
             case VERIFYING: return "Checking local resources";
-            case DOWNLOADING: return "Downloading资源";
+            case DOWNLOADING: return "Downloading resources";
             case DEPLOYING: return "Preparing game resources";
             case READY: return "Ready. Let's play.";
-            case PAUSED: return "下载Paused";
+            case PAUSED: return "Download paused";
             case ERROR: return "Setup interrupted";
             case UPDATE_AVAILABLE: return "App update available";
-            case INSTALL_READY: return "update已下载完成";
+            case INSTALL_READY: return "Update downloaded";
             default: return "Checking resource status";
         }
     }
@@ -463,11 +463,11 @@ public final class BootstrapScreen {
             case VERIFYING: return "Reading local files. No data usage.";
             case DOWNLOADING: return "Completed downloads will be kept.";
             case DEPLOYING: return "Organizing local game files…";
-            case READY: return "所需资源已准备完整，可以Enter Game。";
-            case PAUSED: return "已保存下载 progress，可继续完成准备。";
-            case ERROR: return "暂时无法完成准备，请查看提示后Retry。";
-            case UPDATE_AVAILABLE: return "可以先Enter Game，稍后再update应用。";
-            case INSTALL_READY: return "安装时请在系统界面确认update。";
+            case READY: return "All required resources are ready. You can enter the game.";
+            case PAUSED: return "Download progress has been saved. Resume setup whenever you're ready.";
+            case ERROR: return "Setup could not be completed. Check the message and try again.";
+            case UPDATE_AVAILABLE: return "You can enter the game now and update the app later.";
+            case INSTALL_READY: return "Confirm the update in Android's installer.";
             default: return "Reading installed resources and version information.";
         }
     }
