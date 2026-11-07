@@ -2,7 +2,7 @@
 
 > **置顶声明｜开发来源与修改许可**
 >
-> efootxi 第一版基于 73@**7othree** 版本开发，已获得修改许可。后续版本由 maxlzyver 持续修改与维护。
+> Fut 由 Doruk Çavdar 维护。项目基于 73@**7othree** 的版本并经许可修改；后续上游维护记录归属于 maxlzyver。
 
 [Fut source repository](https://github.com/VeriBotOfficial/Fut) · [完整更新公告](release-notes.md)
 
