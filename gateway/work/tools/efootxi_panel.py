@@ -15,16 +15,16 @@ def _integer(value, name, minimum=0):
     if isinstance(value, str) and value.isascii() and value.isdecimal():
         value = int(value)
     if type(value) is not int or value < minimum:
-        raise ValueError(name + '必须是有效整数')
+        raise ValueError(name + 'must be a valid integer')
     return value
 
 
 def _player(conn, req):
-    pid = _integer(req.get('id'), '球员ID', 1)
-    serial = _integer(req.get('serial'), '球员实例', 1)
+    pid = _integer(req.get('id'), 'Player ID', 1)
+    serial = _integer(req.get('serial'), 'Player instance', 1)
     player = store.player_by_key(conn, pid, serial)
     if not player:
-        raise ValueError('找不到这份球员，请返回列表刷新')
+        raise ValueError('Player not found. Return to the list and refresh.')
     return player
 
 
@@ -83,17 +83,17 @@ def handle(conn, command, req, *, match_running=False):
         # A persisted unfinished match is not proof that this process has a
         # running native match. GateLogic supplies its explicit session flag.
         if match_running:
-            raise ValueError('请先结束当前比赛，再调整附加技能')
+            raise ValueError('Finish the current match before changing additional skills.')
         player = _player(conn, req)
-        sid = _integer(req.get('skill'), '技能ID')
-        slot = _integer(req.get('slot'), '技能槽位', 1)
+        sid = _integer(req.get('skill'), 'Skill ID')
+        slot = _integer(req.get('slot'), 'Skill slot', 1)
         if sid not in player_skills.SELECTABLE_SKILL_IDS:
-            raise ValueError('当前版本不支持该技能')
+            raise ValueError('This skill is not supported in the current version.')
         # Learned/innate checks belong inside the transaction, after receipt
         # replay. Rejecting an already learned ID here made a successful
         # request's transport retry look like a failure before deduplication.
         if slot < 1 or slot > min(5, len(player_skills.learned_skill_ids(player)) + 1):
-            raise ValueError('请选择已有槽位或下一个空槽位')
+            raise ValueError('Select an existing slot or the next empty slot.')
         request = dict(msgid='CMD_USE_MYCLUB_ITEM', user_id=int(store.get_meta(conn, 'user_id', '0')),
                        rqid='panel-' + str(req.get('request_id') or uuid.uuid4()),
                        gameplayer_id_list=[dict(player['gameplayer_id'])], training_index=slot - 1,
@@ -102,31 +102,31 @@ def handle(conn, command, req, *, match_running=False):
         reply = player_operations.transact(conn, 'skill', request,
                                             lambda: player_operations.skill(conn, request))
         if (reply.get('skill_training_result') or {}).get('is_success') != 'YES':
-            raise ValueError('技能未保存，请返回球员列表检查后重试')
+            raise ValueError('Skill was not saved. Return to the player list, check it, and try again.')
         return dict(saved=True, player=_summary(_player(conn, req)),
-                    message='技能已保存。返回游戏后重新打开球员详情或阵容页面以刷新显示。')
+                    message='Skill saved. Return to the game and reopen the player details or squad screen to refresh the display.')
     if command == 'reset_progression':
         if match_running:
-            raise ValueError('请先结束当前比赛，再重置加点')
+            raise ValueError('Finish the current match before resetting progression points.')
         player = _player(conn, req)
         result = player_operations.reset_progression(conn, player['gameplayer_id'],
             request_id='panel-' + str(req.get('request_id') or uuid.uuid4()),
             user_id=int(store.get_meta(conn, 'user_id', '0')))
         return dict(saved=True, progression=result, player=_summary(_player(conn, req)),
-                    message='加点已重置，当前手动/自动模式保持不变。重新打开游戏加点页面后可分配。')
+                    message='Progression points have been reset. The current manual/automatic mode is unchanged. Reopen the in-game progression screen to allocate points.')
     if command == 'training_mode':
         result = training_settings.handle(conn, {'msgid': 'CMD_SET_MYCLUB_CAREERPLAN_ALLOCATE_TYPE',
                                                 'rqid': 'panel-' + str(uuid.uuid4()),
                                                 'careerplan_allocate_type': req.get('mode')})
         if result.get('result') != 'NOERR':
-            raise ValueError('加点模式无效')
+            raise ValueError('Invalid progression mode')
         return dict(mode=training_settings.get(conn))
     if command == 'diagnostics':
         rows = conn.execute('select at,kind,detail from events where kind like ? or kind like ? '
                             'or kind in (?,?,?) order by id desc limit 25',
                             ('match_%', 'efootxi_%', 'start_game', 'player_data_miss', 'use_agent')).fetchall()
         return dict(version=project_info.VERSION, events=[dict(at=a, kind=k, detail=d) for a,k,d in rows])
-    raise ValueError('不支持的设置操作')
+    raise ValueError('Unsupported settings operation')
 
 
 def dispatch(command, request_json='{}'):
@@ -134,10 +134,10 @@ def dispatch(command, request_json='{}'):
         import embedded_gateway
         logic = getattr(embedded_gateway, '_logic', None)
         if logic is None:
-            raise ValueError('本地游戏服务尚未就绪，请进入游戏后重试')
+            raise ValueError('Local game service is not ready. Enter the game and try again.')
         request = json.loads(str(request_json))
         if not isinstance(request, dict):
-            raise ValueError('无效设置请求')
+            raise ValueError('Invalid settings request')
         result = handle(logic.conn, str(command), request,
                         match_running=bool(getattr(logic, 'session_match_running', False)))
         return json.dumps(dict(ok=True, data=result), ensure_ascii=False)
