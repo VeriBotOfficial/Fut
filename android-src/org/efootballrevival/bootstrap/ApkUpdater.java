@@ -48,7 +48,7 @@ public final class ApkUpdater {
                 bytes = positiveInteger(value, "bytes");
                 long sdk = positiveInteger(value, "minSdk");
                 if (sdk > Integer.MAX_VALUE || bytes >= 2L * 1024 * 1024 * 1024)
-                    throw new IOException("应用更新大小或系统版本无效");
+                    throw new IOException("Invalid app update size or Android version");
                 minSdk = (int) sdk;
                 url = value.getString("url");
                 sha256 = hashValue(value, "sha256");
@@ -56,31 +56,31 @@ public final class ApkUpdater {
                 abi = value.getString("abi");
                 versionName = value.getString("versionName");
                 if (!"arm64-v8a".equals(abi) || versionName.isEmpty() || versionName.length() > 100)
-                    throw new IOException("应用更新版本或架构无效");
+                    throw new IOException("Invalid app update version or architecture");
                 URL address = new URL(url);
                 ResourceInstaller.validateUrl(address);
                 if (!"github.com".equalsIgnoreCase(address.getHost())
                         || address.getUserInfo() != null || address.getQuery() != null
                         || address.getRef() != null || (address.getPort() != -1 && address.getPort() != 443)
                         || !address.getPath().matches("/[^/]+/[^/]+/releases/download/[^/]+/[^/]+\\.apk"))
-                    throw new IOException("应用更新地址必须是 GitHub Release APK");
+                    throw new IOException("App update URL must point to a GitHub Release APK");
             } catch (JSONException error) {
-                throw new IOException("应用更新清单不完整", error);
+                throw new IOException("App update manifest is incomplete", error);
             }
         }
 
         private static long positiveInteger(JSONObject value, String key) throws JSONException, IOException {
             Object number = value.get(key);
             if (!(number instanceof Integer) && !(number instanceof Long))
-                throw new IOException("应用更新数值无效：" + key);
+                throw new IOException("Invalid app update value: " + key);
             long result = ((Number) number).longValue();
-            if (result <= 0) throw new IOException("应用更新数值无效：" + key);
+            if (result <= 0) throw new IOException("Invalid app update value: " + key);
             return result;
         }
 
         private static String hashValue(JSONObject value, String key) throws JSONException, IOException {
             String hash = value.getString(key).toLowerCase(Locale.ROOT);
-            if (!hash.matches("[0-9a-f]{64}")) throw new IOException("应用更新校验值无效：" + key);
+            if (!hash.matches("[0-9a-f]{64}")) throw new IOException("Invalid app update checksum: " + key);
             return hash;
         }
     }
@@ -89,35 +89,35 @@ public final class ApkUpdater {
     public static synchronized File downloadAndVerify(Context context, ResourceInstaller installer, Info info)
             throws IOException {
         if (Build.VERSION.SDK_INT < info.minSdk || !supportsAbi(info.abi))
-            throw new IOException("这个更新不适用于当前手机");
+            throw new IOException("This update is not compatible with this device");
         PackageManager manager = context.getPackageManager();
         PackageInfo installed;
         try {
             installed = manager.getPackageInfo(context.getPackageName(), PackageManager.GET_SIGNING_CERTIFICATES);
         } catch (PackageManager.NameNotFoundException error) {
-            throw new IOException("无法读取当前应用信息", error);
+            throw new IOException("Unable to read current app information", error);
         }
         if (info.versionCode < installed.getLongVersionCode())
-            throw new IOException("更新版本低于已安装版本");
+            throw new IOException("Update version is older than the installed version");
         String installedSigner = signer(installed);
         if (!installedSigner.equals(info.signerCertificateSha256))
-            throw new IOException("更新签名与当前应用不一致，已停止更新");
+            throw new IOException("Update signature does not match the installed app. Update cancelled.");
 
         File file = installer.downloadArtifact(FILE_NAME, info.bytes, info.sha256, info.url);
         if (!file.getCanonicalFile().equals(updateFile(context)) || !file.isFile() || file.length() != info.bytes)
-            throw new IOException("应用更新文件位置或大小不正确");
+            throw new IOException("App update file path or size is invalid");
         PackageInfo candidate = manager.getPackageArchiveInfo(file.getAbsolutePath(), PackageManager.GET_SIGNING_CERTIFICATES);
         if (candidate == null || !context.getPackageName().equals(candidate.packageName))
-            throw new IOException("下载的安装包不是当前应用");
+            throw new IOException("The downloaded APK is not this app");
         if (candidate.getLongVersionCode() != info.versionCode
                 || candidate.getLongVersionCode() < installed.getLongVersionCode()
                 || !info.versionName.equals(candidate.versionName))
-            throw new IOException("下载的安装包版本与更新说明不一致");
+            throw new IOException("Downloaded APK version does not match the update manifest");
         if (candidate.applicationInfo == null || candidate.applicationInfo.minSdkVersion != info.minSdk
                 || candidate.applicationInfo.minSdkVersion > Build.VERSION.SDK_INT)
-            throw new IOException("下载的安装包不支持当前系统");
+            throw new IOException("Downloaded APK is not supported by this Android version");
         if (!installedSigner.equals(signer(candidate)))
-            throw new IOException("下载的安装包签名与当前应用不一致");
+            throw new IOException("Downloaded APK signature does not match the installed app");
         boolean containsAbi = false;
         try (ZipFile archive = new ZipFile(file)) {
             Enumeration<? extends ZipEntry> entries = archive.entries();
@@ -127,7 +127,7 @@ public final class ApkUpdater {
                         && entry.getName().endsWith(".so")) { containsAbi = true; break; }
             }
         }
-        if (!containsAbi) throw new IOException("下载的安装包缺少手机所需架构");
+        if (!containsAbi) throw new IOException("Downloaded APK does not include the device's required ABI");
         recordVerifiedDownload(file, info);
         return file;
     }
@@ -177,7 +177,7 @@ public final class ApkUpdater {
     private static File receiptFile(File update, String name) throws IOException {
         File directory = update.getParentFile().getCanonicalFile();
         File expected = new File(directory, name);
-        if (!expected.equals(expected.getCanonicalFile())) throw new IOException("更新记录路径无效");
+        if (!expected.equals(expected.getCanonicalFile())) throw new IOException("Invalid update record path");
         return expected;
     }
 
@@ -191,14 +191,14 @@ public final class ApkUpdater {
             }
             return ResourceInstaller.hex(hash.digest());
         } catch (NoSuchAlgorithmException error) {
-            throw new IOException("系统不支持更新文件校验", error);
+            throw new IOException("This system does not support update file verification", error);
         }
     }
 
     /** false: permission settings opened; true: the system update installer opened. */
     public static boolean requestInstall(Activity activity, File file) throws IOException {
         if (!file.getCanonicalFile().equals(updateFile(activity)) || !file.isFile() || file.length() == 0)
-            throw new IOException("更新文件不存在，请重新下载更新");
+            throw new IOException("Update file not found. Download the update again.");
         try {
             if (!activity.getPackageManager().canRequestPackageInstalls()) {
                 Intent permission = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
@@ -214,7 +214,7 @@ public final class ApkUpdater {
             activity.startActivity(install);
             return true;
         } catch (RuntimeException error) {
-            throw new IOException("无法打开系统安装器，请检查允许安装应用的设置", error);
+            throw new IOException("Unable to open Android's installer. Check the Allow app installs setting.", error);
         }
     }
 
@@ -222,7 +222,7 @@ public final class ApkUpdater {
         File root = context.getFilesDir().getCanonicalFile();
         File expected = new File(new File(root, "resource-bootstrap-state"), FILE_NAME);
         File resolved = expected.getCanonicalFile();
-        if (!resolved.equals(expected)) throw new IOException("更新文件路径无效");
+        if (!resolved.equals(expected)) throw new IOException("Invalid update file path");
         return resolved;
     }
 
@@ -234,11 +234,11 @@ public final class ApkUpdater {
     private static String signer(PackageInfo info) throws IOException {
         Signature[] signatures = info.signingInfo == null ? null : info.signingInfo.getApkContentsSigners();
         if (signatures == null || signatures.length != 1)
-            throw new IOException("无法核实应用签名");
+            throw new IOException("Unable to verify app signature");
         try {
             return ResourceInstaller.hex(MessageDigest.getInstance("SHA-256").digest(signatures[0].toByteArray()));
         } catch (NoSuchAlgorithmException error) {
-            throw new IOException("系统不支持签名校验", error);
+            throw new IOException("This system does not support signature verification", error);
         }
     }
 }
