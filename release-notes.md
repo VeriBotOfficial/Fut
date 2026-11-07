@@ -1,4 +1,4 @@
-**efootxi V1.2 正式版更新公告**
+**Fut V1.2 正式版更新公告**
 
 > **置顶声明**
 >
@@ -102,6 +102,6 @@
 
 49. **下载网络说明。** 资源库托管在 GitHub，下载慢或失败时，请更换好用、稳定的梯子和更快的网络后重试，已有进度会尽量保留。
 
-50. **问题反馈邮箱：** [lzyuan666666@gmail.com](mailto:lzyuan666666@gmail.com)。请附手机型号、Android 版本、游戏版本、复现步骤及截图或录屏。启动失败请提供完整错误文字，先保留应用和存档。
+50. **问题反馈：** [GitHub Issues](https://github.com/VeriBotOfficial/Fut/issues)。请附手机型号、Android 版本、游戏版本、复现步骤及截图或录屏。启动失败请提供完整错误文字，先保留应用和存档。
 
-51. **正式项目地址：** [github.com/maxlzyver/efootxi](https://github.com/maxlzyver/efootxi)。
+51. **正式项目地址：** [github.com/VeriBotOfficial/Fut](https://github.com/VeriBotOfficial/Fut)。
