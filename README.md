@@ -1,43 +1,43 @@
 # Fut V1.2
 
-> **置顶声明｜开发来源与修改许可**
+> **Project ownership and upstream attribution**
 >
-> Fut 由 Doruk Çavdar 维护。项目基于 73@**7othree** 的版本并经许可修改；后续上游维护记录归属于 maxlzyver。
+> Fut is maintained by Doruk Çavdar. This project is a permitted modification of work by 73@**7othree**; subsequent upstream maintenance is attributed to maxlzyver.
 
-[Fut source repository](https://github.com/VeriBotOfficial/Fut) · [完整更新公告](release-notes.md)
+[Fut source repository](https://github.com/VeriBotOfficial/Fut) · [Full release notes](release-notes.md)
 
-下载安装 APK 后自动准备资源，不用手动选包、搬运或解压。完整资源准备后可离线游玩。支持 Android 12 及以上的 ARM64 手机。
+After installing the APK, Fut automatically prepares the required game resources. You do not need to select, move, or extract resource packages manually. Once setup is complete, the game can be played offline. Supports ARM64 devices running Android 12 or later.
 
-## 旧正式版覆盖更新
+## Updating an existing stable installation
 
-已经安装本项目正式版的玩家，下载 V1.2 后按 Android 系统提示覆盖安装，**不要先卸载或清除应用数据**。本版沿用旧正式版包名和签名，保留原正式版存档；已有完整的同版本游戏资源继续校验复用。
+If you already have the stable version installed, download V1.2 and follow Android's prompts to install it over the existing app. **Do not uninstall the app or clear its data first.** This release retains the previous stable package name and signing identity, preserving existing saves. Fully installed resources for the same game version are verified and reused.
 
-测试版为独立应用，测试版存档不会自动搬到正式版。用户最初提供的其他签名原包不能作为本项目正式包覆盖更新。
+The test build is a separate app, and its saves are not automatically transferred to the stable release. An original APK signed with a different key cannot be used as an in-place update for this release.
 
-## V1.2 主要更新
+## V1.2 highlights
 
-- 非普卡预置入库（BT,ST等）：6328 个已确认版本各一份，进入「球员」列表，满级自动加点；固定 1 级的卡保持原上限。
-- 在原有技能训练页面自选普通与 ST 技能，修复五槽错位和重启后技巧变少。
-- 修复球员风格、惯用脚、逆足与心有灵犀相关问题，修正升级后的等级、点数显示。
-- 修复 AI 组别正常完赛被判放弃落败，记录个人出场、进球、助攻并在重启后保留。
-- 修复我的联赛开赛转圈，保存联赛阵容、教练与战术；接入包含 AI 球员的进球榜和助攻榜，覆盖全部 441 支参赛球队。
-- 原帧率设置新增 120 帧选项，保留其他档位；公告通过右上角通知主动查看。
-- 下载断流、超时和临时链接失效自动重试，支持断点续传与完整资源复用。
+- Preloads one copy of each of the 6,328 confirmed non-standard player-card variants (including BT and ST cards) into the Players list. Players are fully levelled and receive automatic progression; cards capped at level 1 retain their original cap.
+- Adds selectable standard and ST skills through the game's existing Skill Training screen. Fixes the five-slot assignment issue and skills disappearing after restart.
+- Fixes player playing styles, preferred foot, weak-foot settings, and the Through Passing effect. Corrects level and progression-point displays after upgrades.
+- Fixes AI-division matches being incorrectly recorded as forfeits after normal completion. Tracks appearances, goals, and assists and preserves the statistics after restart.
+- Fixes My League startup hangs and saves its squad, manager, and tactics. Adds goal and assist leaderboards containing both user and AI players across all 441 participating teams.
+- Adds a 120 FPS option to the existing frame-rate settings while retaining the other options. Release announcements are available from the notification icon in the top-right corner.
+- Automatically retries interrupted or timed-out downloads and expired temporary links. Supports resumable downloads and reuse of verified resources.
 
-部分中国版原创 FP 卡面暂未显示；瞬发射门、强力抢断暂未开放获取。个别设备的抽卡闪退、联网启动黑屏等仍在跟进，完整范围见更新公告。
+Some original FP card artwork from the Chinese client is not yet displayed, and Blitz Curler and Long Reach Tackle are not yet available to obtain. A small number of device-specific issues, including pack-opening crashes and a black screen on first online launch, are still being investigated. See the release notes for the full list.
 
-## 下载与反馈
+## Downloads and support
 
-资源库托管在 GitHub，下载慢或失败时，请更换好用、稳定的梯子和更快的网络后重试。首次准备完整资源需要网络，已有下载进度会尽量保留。
+Game resources are hosted on GitHub. If downloads are slow or fail, try a stable network or proxy. An internet connection is required for the initial resource setup; existing download progress is retained whenever possible.
 
-问题反馈：[GitHub Issues](https://github.com/VeriBotOfficial/Fut/issues)。请提供机型、Android 版本、游戏版本、复现步骤和截图或录屏。启动失败请提供完整错误文字，先保留应用和存档。
+For support, open [GitHub Issues](https://github.com/VeriBotOfficial/Fut/issues). Include your device model, Android version, game version, reproduction steps, and screenshots or a screen recording. If startup fails, include the complete error message. Keep the app and its save data installed while troubleshooting.
 
-## 构建与维护
+## Build and maintenance
 
-正式版使用 `tools/build_stable_apk.py`，版本名 1.2、构建号 1206。它从已校验的正式 1.1.1 APK 构建，保留应用身份，加入与已验证 test.6 相同的功能。旧构建脚本和 test.* 文档属于历史开发记录。
+The stable release is built with `tools/build_stable_apk.py`, using version name 1.2 and build revision 1206. It is built from the verified stable 1.1.1 APK, preserving the app identity and incorporating the features validated in test.6. Older build scripts and test.* documents are historical development records.
 
-本次原生改动仍限于 test.6 已核验的技能候选和帧率菜单范围，游戏原始 DEX 1–6、其他原生库和资源表保留。签名、对齐、全部成员哈希、test.6 对照及旧正式存档升级结果见 [V1.2 验证说明](docs/stable-v1.2-verification.md) 和发布附件。
+Native changes remain limited to the skill-selection candidates and frame-rate menu validated in test.6. Original game DEX files 1–6, other native libraries, and resource tables are preserved. Signing, alignment, file hashes, comparison with test.6, and save migration results are documented in [V1.2 verification](docs/stable-v1.2-verification.md) and the release assets.
 
-APK 更新检测使用递增的 buildRevision；游戏资源依赖的 versionCode=311010101 保持不变。覆盖安装仍由 Android 系统确认。资源和 APK 发布顺序见 [维护说明](docs/resource-updates.md)，更新频道最后切换，历史资源附件不要删除。
+APK update checks use an incrementing `buildRevision`; the game resource dependency `versionCode=311010101` remains unchanged. Android still handles the installation confirmation. See the [maintenance guide](docs/resource-updates.md) for the resource and APK publication sequence. The update channel is switched last; do not delete historical resource assets.
 
-游戏原始安装包、大型资源、签名密钥、密码、临时存档和构建输出不进入代码仓库。
+The original game APK, large game resources, signing keys, passwords, temporary saves, and build outputs are not stored in this source repository.
