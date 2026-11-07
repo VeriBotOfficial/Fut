@@ -4,7 +4,6 @@ import android.app.ActionBar;
 import android.app.Activity;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
-import android.graphics.Insets;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
@@ -17,16 +16,16 @@ import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import java.util.Locale;
 
-/** Native, scrollable presentation only. The coordinator owns every operation and permission. */
+/** Minimal launcher presentation. All installation and launch work belongs to the coordinator. */
 public final class BootstrapScreen {
     public interface Listener {
         void onPause();
         void onResume();
         void onRetry();
+        void onDownloadResources();
         void onDownloadUpdate();
         void onInstallUpdate();
         void onEnterGame();
@@ -34,9 +33,8 @@ public final class BootstrapScreen {
 
     public enum Stage {
         CHECKING, VERIFYING, DOWNLOADING, DEPLOYING, READY, PAUSED, ERROR,
-        UPDATE_AVAILABLE, INSTALL_READY
+        UPDATE_AVAILABLE, INSTALL_READY, NEEDS_DOWNLOAD
     }
-
     public enum ProgressUnit { BYTES, FILES, NONE }
 
     public static final class Model {
@@ -47,31 +45,45 @@ public final class BootstrapScreen {
         public final ProgressUnit unit;
         public final double bytesPerSecond;
         public final boolean online, resourcesReady;
-        public final boolean canPause, canResume, canRetry, canDownloadUpdate, canInstallUpdate, canEnterGame;
+        public final boolean canPause, canResume, canRetry, canDownloadResources;
+        public final boolean canDownloadUpdate, canInstallUpdate, canEnterGame;
 
         private Model(Builder b) {
-            stage = b.stage; versionName = clean(b.versionName); buildRevision = b.buildRevision;
-            resourceVersion = clean(b.resourceVersion); title = clean(b.title); message = clean(b.message);
-            taskLabel = clean(b.taskLabel); details = clean(b.details); errorDetails = clean(b.errorDetails);
-            enterGameLabel = clean(b.enterGameLabel); done = Math.max(0, b.done); total = b.total;
+            stage = b.stage;
+            versionName = clean(b.versionName);
+            resourceVersion = clean(b.resourceVersion);
+            title = clean(b.title);
+            message = clean(b.message);
+            taskLabel = clean(b.taskLabel);
+            details = clean(b.details);
+            errorDetails = clean(b.errorDetails);
+            enterGameLabel = clean(b.enterGameLabel);
+            buildRevision = b.buildRevision;
+            done = Math.max(0, b.done);
+            total = b.total;
             unit = b.unit == null ? ProgressUnit.NONE : b.unit;
             bytesPerSecond = Double.isNaN(b.bytesPerSecond) || Double.isInfinite(b.bytesPerSecond)
                     ? 0 : Math.max(0, b.bytesPerSecond);
-            online = b.online; resourcesReady = b.resourcesReady;
-            canPause = b.canPause; canResume = b.canResume; canRetry = b.canRetry;
-            canDownloadUpdate = b.canDownloadUpdate; canInstallUpdate = b.canInstallUpdate;
+            online = b.online;
+            resourcesReady = b.resourcesReady;
+            canPause = b.canPause;
+            canResume = b.canResume;
+            canRetry = b.canRetry;
+            canDownloadResources = b.canDownloadResources;
+            canDownloadUpdate = b.canDownloadUpdate;
+            canInstallUpdate = b.canInstallUpdate;
             canEnterGame = b.canEnterGame && b.resourcesReady;
         }
 
         public static final class Builder {
             private final Stage stage;
             private String versionName = "", resourceVersion = "", title = "", message = "", taskLabel = "";
-            private String details = "", errorDetails = "", enterGameLabel = "Enter Game";
+            private String details = "", errorDetails = "", enterGameLabel = "Play";
             private long buildRevision, done, total;
             private ProgressUnit unit = ProgressUnit.NONE;
             private double bytesPerSecond;
             private boolean online, resourcesReady, canPause, canResume, canRetry;
-            private boolean canDownloadUpdate, canInstallUpdate, canEnterGame;
+            private boolean canDownloadResources, canDownloadUpdate, canInstallUpdate, canEnterGame;
 
             public Builder(Stage stage) { this.stage = stage == null ? Stage.CHECKING : stage; }
             public Builder version(String name, long revision) { versionName = name; buildRevision = revision; return this; }
@@ -88,6 +100,7 @@ public final class BootstrapScreen {
             public Builder canPause(boolean value) { canPause = value; return this; }
             public Builder canResume(boolean value) { canResume = value; return this; }
             public Builder canRetry(boolean value) { canRetry = value; return this; }
+            public Builder canDownloadResources(boolean value) { canDownloadResources = value; return this; }
             public Builder canDownloadUpdate(boolean value) { canDownloadUpdate = value; return this; }
             public Builder canInstallUpdate(boolean value) { canInstallUpdate = value; return this; }
             public Builder canEnterGame(boolean value) { canEnterGame = value; return this; }
@@ -96,34 +109,36 @@ public final class BootstrapScreen {
         }
     }
 
-    private static final int BLUE = Color.rgb(39, 101, 220);
-    private static final int INK = Color.rgb(24, 43, 74);
-    private static final int MUTED = Color.rgb(83, 104, 135);
-    private static final int LINE = Color.rgb(214, 227, 246);
-    private static final int PALE = Color.rgb(239, 246, 255);
+    private static final int BG = Color.rgb(247, 248, 250);
+    private static final int INK = Color.rgb(24, 28, 35);
+    private static final int MUTED = Color.rgb(112, 119, 130);
+    private static final int ACCENT = Color.rgb(34, 91, 190);
+    private static final int LINE = Color.rgb(228, 231, 236);
+
     private final Activity activity;
     private final Listener listener;
-    private final LinearLayout root, content, card, actions;
-    private final TextView version, network, resourceState, stageLabel, heading, message;
-    private final TextView task, percentage, amount, speed, notes, resourceVersion, technicalDetails, footer;
+    private final LinearLayout root, content;
+    private final TextView title, message, status, progressText, errorText;
     private final ProgressBar progress;
-    private final Button errorToggle, pause, resume, retry, downloadUpdate, installUpdate, enterGame;
+    private final Button primary, secondary, errorToggle;
     private Model model;
     private boolean detailsExpanded;
     private String lastError = "";
 
     public BootstrapScreen(Activity activity, Listener listener) {
         if (activity == null || listener == null) throw new IllegalArgumentException("Activity and listener are required");
-        this.activity = activity; this.listener = listener;
+        this.activity = activity;
+        this.listener = listener;
         try { activity.requestWindowFeature(Window.FEATURE_NO_TITLE); }
-        catch (RuntimeException contentAlreadyInstalled) { /* A themed ActionBar can still be hidden below. */ }
-        ActionBar actionBar = activity.getActionBar();
-        if (actionBar != null) actionBar.hide();
+        catch (RuntimeException ignored) { }
+        ActionBar bar = activity.getActionBar();
+        if (bar != null) bar.hide();
+
         Window window = activity.getWindow();
+        window.setStatusBarColor(BG);
+        window.setNavigationBarColor(BG);
         window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        window.setDecorFitsSystemWindows(false);
-        window.setStatusBarColor(Color.TRANSPARENT);
-        window.setNavigationBarColor(Color.WHITE);
+        window.setDecorFitsSystemWindows(true);
         WindowInsetsController controller = window.getInsetsController();
         if (controller != null) {
             controller.show(WindowInsets.Type.systemBars());
@@ -132,136 +147,94 @@ public final class BootstrapScreen {
                     WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
                             | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
         }
-        root = column();
-        root.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[] {Color.rgb(229, 240, 255), Color.rgb(248, 251, 255), Color.WHITE}));
-        root.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
-            @Override public WindowInsets onApplyWindowInsets(View view, WindowInsets insets) {
-                Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-                root.setPadding(bars.left, bars.top, bars.right, bars.bottom);
-                return WindowInsets.CONSUMED;
-            }
-        });
 
-        ScrollView scroll = new ScrollView(activity);
-        scroll.setFillViewport(true);
-        scroll.setClipToPadding(false);
-        scroll.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
-        scroll.setVerticalScrollBarEnabled(true);
-        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
-        content = column();
-        content.setPadding(dp(22), dp(24), dp(22), dp(24));
-        scroll.addView(content, new ScrollView.LayoutParams(-1, -2));
+        root = new LinearLayout(activity);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setGravity(Gravity.CENTER);
+        root.setBackgroundColor(BG);
+        root.setPadding(dp(26), dp(28), dp(26), dp(24));
 
-        TextView brand = text("Fut", 32, BLUE, true);
-        content.addView(brand, margin(0));
-        version = text("", 16, MUTED, false);
-        content.addView(version, margin(6));
-        network = text("", 16, BLUE, false);
-        network.setPadding(dp(12), dp(7), dp(12), dp(7));
-        network.setBackground(shape(Color.WHITE, 10, LINE));
-        LinearLayout.LayoutParams networkLayout = margin(16);
-        networkLayout.width = -2;
-        content.addView(network, networkLayout);
+        content = new LinearLayout(activity);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setGravity(Gravity.CENTER_HORIZONTAL);
+        content.setPadding(dp(22), dp(26), dp(22), dp(24));
+        content.setBackground(shape(Color.WHITE, 24, LINE));
+        content.setElevation(dp(2));
+        root.addView(content, new LinearLayout.LayoutParams(-1, -2));
 
-        card = column();
-        card.setPadding(dp(20), dp(22), dp(20), dp(22));
-        card.setBackground(shape(Color.WHITE, 22, LINE));
-        card.setElevation(dp(2));
-        content.addView(card, margin(22));
-        stageLabel = text("", 16, BLUE, true);
-        card.addView(stageLabel, margin(0));
-        heading = text("", 28, INK, true);
-        heading.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        card.addView(heading, margin(12));
-        message = text("", 18, MUTED, false);
-        card.addView(message, margin(12));
-        task = text("", 16, MUTED, true);
-        card.addView(task, margin(24));
-        percentage = text("", 52, BLUE, true);
-        card.addView(percentage, margin(8));
+        TextView brand = text("Fut", 38, INK, true);
+        brand.setGravity(Gravity.CENTER);
+        content.addView(brand, matchWrap(0));
+
+        TextView tagline = text("Your game. Ready when you are.", 15, MUTED, false);
+        tagline.setGravity(Gravity.CENTER);
+        content.addView(tagline, margin(7));
+
+        title = text("Checking your game", 23, INK, true);
+        title.setGravity(Gravity.CENTER);
+        content.addView(title, margin(34));
+
+        message = text("Checking installed files and updates.", 15, MUTED, false);
+        message.setGravity(Gravity.CENTER);
+        content.addView(message, margin(9));
+
         progress = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(1000);
-        progress.setProgressTintList(ColorStateList.valueOf(BLUE));
+        progress.setProgressTintList(ColorStateList.valueOf(ACCENT));
         progress.setProgressBackgroundTintList(ColorStateList.valueOf(LINE));
-        progress.setIndeterminateTintList(ColorStateList.valueOf(BLUE));
-        LinearLayout.LayoutParams progressLayout = new LinearLayout.LayoutParams(-1, dp(9));
-        progressLayout.topMargin = dp(14);
-        card.addView(progress, progressLayout);
-        amount = text("", 18, INK, true);
-        card.addView(amount, margin(12));
-        speed = text("", 16, MUTED, false);
-        card.addView(speed, margin(10));
-        resourceState = text("", 16, MUTED, false);
-        card.addView(resourceState, margin(20));
+        LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(-1, dp(7));
+        progressParams.topMargin = dp(25);
+        content.addView(progress, progressParams);
 
-        notes = text("", 18, MUTED, false);
-        notes.setTextIsSelectable(true);
-        content.addView(notes, margin(24));
-        resourceVersion = text("", 16, MUTED, false);
-        resourceVersion.setTextIsSelectable(true);
-        content.addView(resourceVersion, margin(16));
-        TextView projectNote = text("Game resources are hosted on GitHub. If downloads are slow or fail, switch to a stable network and try again. Download speed depends on your connection. Once all resources are installed, you can play offline.\nFor support, use GitHub Issues.", 18, MUTED, false);
-        content.addView(projectNote, margin(18));
-        TextView provenance = text("Fut is maintained by Doruk Çavdar. This project includes upstream work used with permission; see the repository for attribution.", 16, MUTED, false);
-        android.text.SpannableString creditedSource = new android.text.SpannableString(provenance.getText());
-        int authorStart = creditedSource.toString().indexOf("7othree");
-        creditedSource.setSpan(new android.text.style.StyleSpan(Typeface.BOLD), authorStart, authorStart + 7,
-                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        provenance.setText(creditedSource);
-        content.addView(provenance, margin(12));
-        TextView projectAddress = text("Project: https://github.com/VeriBotOfficial/Fut\nSupport: https://github.com/VeriBotOfficial/Fut/issues\nTo read release notes, open the game and tap the notification icon in the top-right corner.", 18, MUTED, false);
-        projectAddress.setTextIsSelectable(true);
-        android.text.util.Linkify.addLinks(projectAddress, android.text.util.Linkify.WEB_URLS);
-        content.addView(projectAddress, margin(16));
-        errorToggle = button("View error details");
-        styleButton(errorToggle, false);
-        errorToggle.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View view) {
-                detailsExpanded = !detailsExpanded;
-                updateErrorDetails();
-            }
-        });
-        content.addView(errorToggle, margin(18));
-        technicalDetails = text("", 16, MUTED, false);
-        technicalDetails.setTypeface(Typeface.MONOSPACE);
-        technicalDetails.setTextIsSelectable(true);
-        technicalDetails.setPadding(dp(16), dp(16), dp(16), dp(16));
-        technicalDetails.setBackground(shape(PALE, 12, LINE));
-        content.addView(technicalDetails, margin(10));
-        TextView scrollHint = text("Scroll to view all information", 16, MUTED, false);
-        scrollHint.setGravity(Gravity.CENTER);
-        content.addView(scrollHint, margin(24));
+        progressText = text("", 13, MUTED, false);
+        progressText.setGravity(Gravity.CENTER);
+        content.addView(progressText, margin(10));
 
-        // This region is outside ScrollView, so no scrollable text can be hidden behind a button.
-        actions = column();
-        actions.setPadding(dp(22), dp(14), dp(22), dp(16));
-        actions.setBackgroundColor(Color.WHITE);
-        actions.setElevation(dp(4));
-        root.addView(actions, new LinearLayout.LayoutParams(-1, -2));
-        enterGame = action("Enter Game", new Runnable() {
-            @Override public void run() { if (model != null && model.canEnterGame) BootstrapScreen.this.listener.onEnterGame(); }
+        status = text("", 13, MUTED, false);
+        status.setGravity(Gravity.CENTER);
+        content.addView(status, margin(18));
+
+        primary = button("Download game data", true);
+        primary.setOnClickListener(v -> {
+            if (model == null) return;
+            if (model.canDownloadResources) listener.onDownloadResources();
+            else if (model.canEnterGame) listener.onEnterGame();
+            else if (model.canInstallUpdate) listener.onInstallUpdate();
+            else if (model.canDownloadUpdate) listener.onDownloadUpdate();
+            else if (model.canRetry) listener.onRetry();
+            else if (model.canResume) listener.onResume();
         });
-        installUpdate = action("Install app update", new Runnable() {
-            @Override public void run() { if (model != null && model.canInstallUpdate) BootstrapScreen.this.listener.onInstallUpdate(); }
+        LinearLayout.LayoutParams primaryParams = new LinearLayout.LayoutParams(-1, dp(62));
+        primaryParams.topMargin = dp(26);
+        content.addView(primary, primaryParams);
+
+        secondary = button("Pause", false);
+        secondary.setOnClickListener(v -> {
+            if (model == null) return;
+            if (model.canPause) listener.onPause();
+            else if (model.canResume) listener.onResume();
         });
-        downloadUpdate = action("Download app update", new Runnable() {
-            @Override public void run() { if (model != null && model.canDownloadUpdate) BootstrapScreen.this.listener.onDownloadUpdate(); }
+        content.addView(secondary, margin(10));
+
+        errorToggle = button("Show error details", false);
+        errorToggle.setOnClickListener(v -> {
+            detailsExpanded = !detailsExpanded;
+            updateError();
         });
-        resume = action("Resume download", new Runnable() {
-            @Override public void run() { if (model != null && model.canResume) BootstrapScreen.this.listener.onResume(); }
-        });
-        retry = action("Retry", new Runnable() {
-            @Override public void run() { if (model != null && model.canRetry) BootstrapScreen.this.listener.onRetry(); }
-        });
-        pause = action("Pause download", new Runnable() {
-            @Override public void run() { if (model != null && model.canPause) BootstrapScreen.this.listener.onPause(); }
-        });
-        footer = text("", 16, MUTED, false);
+        content.addView(errorToggle, margin(8));
+
+        errorText = text("", 12, MUTED, false);
+        errorText.setTypeface(Typeface.MONOSPACE);
+        errorText.setPadding(dp(12), dp(12), dp(12), dp(12));
+        errorText.setBackground(shape(BG, 10, LINE));
+        content.addView(errorText, margin(8));
+
+        TextView footer = text("Initial download required · Updates checked automatically", 12, MUTED, false);
         footer.setGravity(Gravity.CENTER);
-        actions.addView(footer, margin(12));
+        LinearLayout.LayoutParams footerParams = margin(22);
+        root.addView(footer, footerParams);
+
         activity.setContentView(root);
-        root.requestApplyInsets();
         render(new Model.Builder(Stage.CHECKING).build());
     }
 
@@ -270,205 +243,139 @@ public final class BootstrapScreen {
     public void render(Model next) {
         if (!alive() || next == null) return;
         model = next;
-        version.setText("App " + (next.versionName.isEmpty() ? "—" : next.versionName)
-                + "  ·  Build " + (next.buildRevision > 0 ? String.valueOf(next.buildRevision) : "—"));
-        network.setText(next.online ? "Connected" : "Offline");
-        setTextIfChanged(stageLabel, stageName(next.stage));
-        setTextIfChanged(heading, next.title.isEmpty() ? defaultTitle(next.stage) : next.title);
-        setTextIfChanged(message, next.message.isEmpty() ? defaultMessage(next.stage) : next.message);
-        resourceState.setText(next.resourcesReady ? "Game resources: Ready"
-                : next.stage == Stage.ERROR ? "Game resources: Not yet verified"
-                : next.stage == Stage.PAUSED ? "Game resources: Setup incomplete"
-                : next.stage == Stage.CHECKING || next.stage == Stage.VERIFYING ? "Game resources: Checking"
-                : "Game resources: Preparing");
-        resourceState.setTextColor(next.resourcesReady ? Color.rgb(40, 117, 82) : MUTED);
+        title.setText(next.title.isEmpty() ? defaultTitle(next.stage) : next.title);
+        message.setText(next.message.isEmpty() ? defaultMessage(next.stage) : next.message);
+
         boolean active = next.stage == Stage.CHECKING || next.stage == Stage.VERIFYING
                 || next.stage == Stage.DOWNLOADING || next.stage == Stage.DEPLOYING;
-        boolean showProgress = active || (next.stage == Stage.PAUSED && next.total > 0);
-        task.setVisibility(showProgress ? View.VISIBLE : View.GONE);
-        task.setText(next.taskLabel.isEmpty() ? stageName(next.stage) + " progress" : next.taskLabel);
+        boolean showProgress = active || next.stage == Stage.PAUSED;
         progress.setVisibility(showProgress ? View.VISIBLE : View.GONE);
-        amount.setVisibility(showProgress ? View.VISIBLE : View.GONE);
-        percentage.setVisibility(showProgress && next.total > 0 ? View.VISIBLE : View.GONE);
+        progressText.setVisibility(showProgress ? View.VISIBLE : View.GONE);
         progress.setIndeterminate(active && next.total <= 0);
         if (next.total > 0) {
             double ratio = Math.min(1d, (double) next.done / (double) next.total);
             progress.setProgress((int) (ratio * 1000d));
-            String percent = String.format(Locale.SIMPLIFIED_CHINESE, "%.1f%%", ratio * 100d);
-            percentage.setText(percent);
-            if (next.unit == ProgressUnit.BYTES)
-                amount.setText(bytes(next.done) + " / " + bytes(next.total));
-            else if (next.unit == ProgressUnit.FILES)
-                amount.setText(next.done + " / " + next.total + " files");
-            else amount.setText(percent);
-            progress.setContentDescription(task.getText() + "，" + amount.getText());
+            String amount = next.unit == ProgressUnit.BYTES
+                    ? bytes(next.done) + " / " + bytes(next.total)
+                    : next.done + " / " + next.total + " files";
+            String speed = next.stage == Stage.DOWNLOADING && next.bytesPerSecond > 0
+                    ? " · " + bytes((long) next.bytesPerSecond) + "/s" : "";
+            progressText.setText(String.format(Locale.ROOT, "%.0f%% · %s%s", ratio * 100d, amount, speed));
         } else {
-            amount.setText("Working…");
-            progress.setContentDescription(task.getText() + ", total pending");
+            progressText.setText(next.taskLabel.isEmpty() ? "Working…" : next.taskLabel);
         }
-        boolean showSpeed = next.stage == Stage.DOWNLOADING && next.bytesPerSecond > 0;
-        speed.setVisibility(showSpeed ? View.VISIBLE : View.GONE);
-        if (showSpeed) speed.setText("Download speed  " + bytes((long) next.bytesPerSecond) + "/s");
-        notes.setText(next.details);
-        notes.setVisibility(next.details.isEmpty() ? View.GONE : View.VISIBLE);
-        resourceVersion.setText("Resource version  " + next.resourceVersion);
-        resourceVersion.setVisibility(next.resourceVersion.isEmpty() ? View.GONE : View.VISIBLE);
-        if (!next.errorDetails.equals(lastError)) { lastError = next.errorDetails; detailsExpanded = false; }
-        technicalDetails.setText(next.errorDetails);
-        updateErrorDetails();
 
-        enterGame.setText(next.enterGameLabel.isEmpty() ? "Enter Game" : next.enterGameLabel);
-        pause.setText(next.stage == Stage.DOWNLOADING ? "Pause download" : next.stage == Stage.VERIFYING ? "Pause verification" : "Pause setup");
-        resume.setText(next.title.contains("update") ? "Resume update" : "Resume setup");
-        Button[] buttons = { enterGame, installUpdate, downloadUpdate, resume, retry, pause };
-        boolean[] allowed = { next.canEnterGame, next.canInstallUpdate, next.canDownloadUpdate,
-                next.canResume, next.canRetry, next.canPause };
-        boolean hasButton = false;
-        for (int index = 0; index < buttons.length; index++) {
-            Button button = buttons[index];
-            button.setVisibility(allowed[index] ? View.VISIBLE : View.GONE);
-            if (allowed[index]) {
-                styleButton(button, !hasButton);
-                LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) button.getLayoutParams();
-                int topMargin = hasButton ? dp(10) : 0;
-                if (params.topMargin != topMargin) {
-                    params.topMargin = topMargin;
-                    button.setLayoutParams(params);
-                }
-                hasButton = true;
-            }
+        status.setText(next.resourcesReady ? "Game data is ready"
+                : next.online ? "Internet connection available" : "Offline");
+        status.setVisibility(next.stage == Stage.NEEDS_DOWNLOAD || next.stage == Stage.READY ? View.VISIBLE : View.GONE);
+
+        String actionLabel = "Download game data";
+        boolean showPrimary = false;
+        if (next.canDownloadResources) { actionLabel = "Download game data"; showPrimary = true; }
+        else if (next.canEnterGame) { actionLabel = "Play"; showPrimary = true; }
+        else if (next.canInstallUpdate) { actionLabel = "Install app update"; showPrimary = true; }
+        else if (next.canDownloadUpdate) { actionLabel = "Download app update"; showPrimary = true; }
+        else if (next.canRetry) { actionLabel = "Try again"; showPrimary = true; }
+        else if (next.canResume) { actionLabel = "Resume download"; showPrimary = true; }
+        primary.setText(actionLabel);
+        primary.setVisibility(showPrimary ? View.VISIBLE : View.GONE);
+        primary.setEnabled(showPrimary);
+        primary.setAlpha(showPrimary ? 1f : 0.55f);
+
+        boolean showSecondary = next.canPause || next.canResume;
+        secondary.setVisibility(showSecondary ? View.VISIBLE : View.GONE);
+        secondary.setText(next.canPause ? "Pause download" : "Resume download");
+
+        if (!next.errorDetails.equals(lastError)) {
+            lastError = next.errorDetails;
+            detailsExpanded = false;
         }
-        String footerText = next.stage == Stage.PAUSED ? "Downloaded data will be kept"
-                : next.canInstallUpdate ? "Confirm the update in Android's installer"
-                : next.canPause ? "Completed data will be kept when paused"
-                : next.resourcesReady && !next.online ? "Using local resources; no network wait required"
-                : "";
-        footer.setText(footerText);
-        footer.setVisibility(footerText.isEmpty() ? View.GONE : View.VISIBLE);
-        actions.setVisibility(hasButton ? View.VISIBLE : View.GONE);
+        errorText.setText(next.errorDetails);
+        updateError();
     }
 
-    private void updateErrorDetails() {
+    private void updateError() {
         boolean available = model != null && !model.errorDetails.isEmpty();
         errorToggle.setVisibility(available ? View.VISIBLE : View.GONE);
-        errorToggle.setText(detailsExpanded ? "Hide error details" : "View error details");
-        errorToggle.setContentDescription(detailsExpanded ? "Hide error details，currently expanded" : "View error details，currently collapsed");
-        technicalDetails.setVisibility(available && detailsExpanded ? View.VISIBLE : View.GONE);
+        errorToggle.setText(detailsExpanded ? "Hide error details" : "Show error details");
+        errorText.setVisibility(available && detailsExpanded ? View.VISIBLE : View.GONE);
     }
 
-    private Button action(String label, final Runnable callback) {
-        Button button = button(label);
-        button.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View view) { if (alive()) callback.run(); }
-        });
-        actions.addView(button, margin(10));
-        return button;
+    private Button button(String label, boolean filled) {
+        Button result = new Button(activity);
+        result.setText(label);
+        result.setAllCaps(false);
+        result.setTextSize(17);
+        result.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        result.setGravity(Gravity.CENTER);
+        result.setMinHeight(dp(58));
+        result.setPadding(dp(14), dp(10), dp(14), dp(10));
+        result.setStateListAnimator(null);
+        result.setTextColor(filled ? Color.WHITE : ACCENT);
+        GradientDrawable bg = shape(filled ? ACCENT : Color.WHITE, 15, filled ? ACCENT : LINE);
+        result.setBackground(new RippleDrawable(ColorStateList.valueOf(filled
+                ? Color.argb(38, 255, 255, 255) : Color.argb(20, 34, 91, 190)), bg, shape(Color.WHITE, 15, Color.WHITE)));
+        return result;
     }
 
-    private Button button(String label) {
-        Button button = new Button(activity);
-        button.setText(label);
-        button.setAllCaps(false);
-        button.setSingleLine(false);
-        button.setTextSize(20);
-        button.setTypeface(Typeface.DEFAULT);
-        button.setGravity(Gravity.CENTER);
-        button.setMinHeight(dp(60));
-        button.setMinimumHeight(dp(60));
-        button.setPadding(dp(16), dp(12), dp(16), dp(12));
-        button.setStateListAnimator(null);
-        return button;
-    }
-
-    private void styleButton(Button button, boolean primary) {
-        if (Boolean.valueOf(primary).equals(button.getTag())) return;
-        button.setTag(Boolean.valueOf(primary));
-        button.setTextColor(primary ? Color.WHITE : BLUE);
-        button.setBackgroundTintList(null);
-        GradientDrawable background = shape(primary ? BLUE : Color.WHITE, 14, primary ? BLUE : LINE);
-        GradientDrawable mask = shape(Color.WHITE, 14, Color.WHITE);
-        button.setBackground(new RippleDrawable(ColorStateList.valueOf(primary
-                ? Color.argb(45, 255, 255, 255) : Color.argb(24, 39, 101, 220)), background, mask));
-    }
-
-    private LinearLayout column() {
-        LinearLayout layout = new LinearLayout(activity);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        return layout;
-    }
-
-    private TextView text(String value, float size, int color, boolean medium) {
+    private TextView text(String value, float size, int color, boolean bold) {
         TextView view = new TextView(activity);
-        view.setText(value); view.setTextSize(size); view.setTextColor(color);
-        view.setTypeface(Typeface.DEFAULT, medium ? Typeface.BOLD : Typeface.NORMAL);
+        view.setText(value);
+        view.setTextSize(size);
+        view.setTextColor(color);
+        view.setTypeface(Typeface.DEFAULT, bold ? Typeface.BOLD : Typeface.NORMAL);
         view.setLineSpacing(dp(3), 1f);
-        view.setBreakStrategy(1);
-        view.setHyphenationFrequency(0);
         return view;
     }
 
     private GradientDrawable shape(int color, int radius, int stroke) {
         GradientDrawable drawable = new GradientDrawable();
-        drawable.setColor(color); drawable.setCornerRadius(dp(radius)); drawable.setStroke(dp(1), stroke);
+        drawable.setColor(color);
+        drawable.setCornerRadius(dp(radius));
+        drawable.setStroke(dp(1), stroke);
         return drawable;
     }
 
     private LinearLayout.LayoutParams margin(int top) {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
-        params.topMargin = dp(top); return params;
+        params.topMargin = dp(top);
+        return params;
     }
-
-    private int dp(int value) { return (int) (value * activity.getResources().getDisplayMetrics().density + 0.5f); }
+    private LinearLayout.LayoutParams matchWrap(int top) { return margin(top); }
+    private int dp(int value) {
+        return (int) (value * activity.getResources().getDisplayMetrics().density + 0.5f);
+    }
     private static String clean(String value) { return value == null ? "" : value.trim(); }
-    private static void setTextIfChanged(TextView view, String value) {
-        if (!value.contentEquals(view.getText())) view.setText(value);
-    }
     private static String bytes(long value) {
-        if (value >= 1000000000L) return String.format(Locale.SIMPLIFIED_CHINESE, "%.2f GB", value / 1e9);
-        if (value >= 1000000L) return String.format(Locale.SIMPLIFIED_CHINESE, "%.1f MB", value / 1e6);
-        if (value >= 1000L) return String.format(Locale.SIMPLIFIED_CHINESE, "%.1f KB", value / 1e3);
+        if (value >= 1000000000L) return String.format(Locale.ROOT, "%.2f GB", value / 1e9);
+        if (value >= 1000000L) return String.format(Locale.ROOT, "%.1f MB", value / 1e6);
+        if (value >= 1000L) return String.format(Locale.ROOT, "%.1f KB", value / 1e3);
         return value + " B";
     }
-
-    private static String stageName(Stage stage) {
-        switch (stage) {
-            case VERIFYING: return "Verifying files";
-            case DOWNLOADING: return "Downloading";
-            case DEPLOYING: return "Installing";
-            case READY: return "Ready";
-            case PAUSED: return "Paused";
-            case ERROR: return "Action required";
-            case UPDATE_AVAILABLE: return "App update";
-            case INSTALL_READY: return "Ready to install";
-            default: return "Checking status";
-        }
-    }
-
     private static String defaultTitle(Stage stage) {
         switch (stage) {
-            case VERIFYING: return "Checking local resources";
-            case DOWNLOADING: return "Downloading resources";
-            case DEPLOYING: return "Preparing game resources";
-            case READY: return "Ready. Let's play.";
+            case NEEDS_DOWNLOAD: return "Ready to download";
+            case VERIFYING: return "Checking game data";
+            case DOWNLOADING: return "Downloading game data";
+            case DEPLOYING: return "Preparing your game";
+            case READY: return "Starting game";
             case PAUSED: return "Download paused";
-            case ERROR: return "Setup interrupted";
-            case UPDATE_AVAILABLE: return "App update available";
-            case INSTALL_READY: return "Update downloaded";
-            default: return "Checking resource status";
+            case ERROR: return "Something went wrong";
+            case INSTALL_READY: return "Update ready";
+            default: return "Checking your game";
         }
     }
-
     private static String defaultMessage(Stage stage) {
         switch (stage) {
-            case VERIFYING: return "Reading local files. No data usage.";
-            case DOWNLOADING: return "Completed downloads will be kept.";
-            case DEPLOYING: return "Organizing local game files…";
-            case READY: return "All required resources are ready. You can enter the game.";
-            case PAUSED: return "Download progress has been saved. Resume setup whenever you're ready.";
-            case ERROR: return "Setup could not be completed. Check the message and try again.";
-            case UPDATE_AVAILABLE: return "You can enter the game now and update the app later.";
-            case INSTALL_READY: return "Confirm the update in Android's installer.";
-            default: return "Reading installed resources and version information.";
+            case NEEDS_DOWNLOAD: return "Download the required files once. You can play offline afterwards.";
+            case VERIFYING: return "Checking local files. This should only take a moment.";
+            case DOWNLOADING: return "Keep the app open while your files are downloaded.";
+            case DEPLOYING: return "Finishing the installation.";
+            case READY: return "Launching…";
+            case PAUSED: return "Your downloaded progress has been saved.";
+            case ERROR: return "The game data could not be prepared. Your existing files are safe.";
+            case INSTALL_READY: return "The app update has been downloaded.";
+            default: return "Checking installed files and available updates.";
         }
     }
 }
