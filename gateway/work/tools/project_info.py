@@ -1,14 +1,14 @@
-"""Visible project identity for the official efootxi application."""
-NAME = 'efootxi'
+"""Visible project identity for the official Fut application."""
+NAME = 'Fut'
 VERSION = '1.2'
 BUILD_REVISION = 1206
 BUILD_LABEL = '1.2'
 CHANNEL = 'stable'
-AUTHOR = 'maxlzyver'
-PROJECT_URL = 'https://github.com/maxlzyver/efootxi'
-STABLE_URL = 'https://github.com/maxlzyver/efootxi'
-PROVENANCE = 'efootxi 第一版基于 73@7othree 版本开发，已获得修改许可。后续版本由 maxlzyver 持续修改与维护，具体变更以各版本更新公告为准。'
-FEEDBACK_EMAIL = 'lzyuan666666@gmail.com'
+AUTHOR = 'Doruk Çavdar'
+PROJECT_URL = 'https://github.com/VeriBotOfficial/Fut'
+STABLE_URL = 'https://github.com/VeriBotOfficial/Fut'
+PROVENANCE = 'Fut is maintained by Doruk Çavdar. This project includes permitted upstream work; see the repository README for attribution.'
+FEEDBACK_EMAIL = ''
 NETWORK_NOTE = '资源托管在 GitHub。下载慢或失败时，请更换可用、稳定的梯子（网络代理）和更快的网络后重试；下载速度仍取决于实际连接。资源完整后可离线游玩。'
 
 
