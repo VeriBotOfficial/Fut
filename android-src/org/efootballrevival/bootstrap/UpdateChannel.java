@@ -173,7 +173,7 @@ public final class UpdateChannel {
             return new ResourceInstaller.Manifest(root.getString("packageName"), root.getLong("versionCode"),
                     root.getString("resourceVersion"), packs);
         } catch (IOException error) { throw error; }
-        catch (Exception malformed) { throw new IOException("资源清单无效", malformed); }
+        catch (Exception malformed) { throw new IOException("Invalid resource manifest", malformed); }
     }
 
     static URL repositoryUrl(String value) throws IOException {
@@ -239,7 +239,7 @@ public final class UpdateChannel {
                         if (location == null) throw new IOException("Invalid update redirect");
                         address = new URL(address, location); continue;
                     }
-                    if (code != 200) throw new IOException("更新检查 HTTP " + code);
+                    if (code != 200) throw new IOException("Update check HTTP " + code);
                     long length = connection.getContentLengthLong();
                     if (length > limit) throw new IOException("Update manifest exceeds the size limit");
                     try (InputStream input = connection.getInputStream(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
