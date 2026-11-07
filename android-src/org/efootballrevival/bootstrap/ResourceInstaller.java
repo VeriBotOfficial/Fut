@@ -362,7 +362,7 @@ public final class ResourceInstaller {
                             if (count > entry.bytes - written) throw new IOException("Unexpected first-run data size: " + entry.path);
                             sha.update(buffer, 0, count); written += count;
                             if (output != null) output.write(buffer, 0, count);
-                            report("准备", "Verifying first-run data", written, entry.bytes);
+                            report("Setup", "Verifying first-run data", written, entry.bytes);
                         }
                         if (output != null) output.getFD().sync();
                     }
