@@ -529,7 +529,7 @@ public final class ResourceInstaller {
                 if (failures >= autoRetries
                         || (error.refreshRedirect && expiredRedirects >= 2))
                     throw new IOException("The connection is still unstable after automatic retries. Progress has been saved; adjust your network and resume: "
-                            + name + "（" + error.getMessage() + "）", error);
+                            + name + " (" + error.getMessage() + ")", error);
                 failures++; retries++;
                 if (error.refreshRedirect) { expiredRedirects++; refreshRedirect = true; }
                 long delay = Math.max(retryDelayMillis(failures), error.retryAfterMillis);
