@@ -44,7 +44,7 @@ public final class GatewayGuard {
             if(!target.getCanonicalPath().startsWith(prefix)) throw new IllegalStateException("Unsafe support path");
             if(target.isFile() && target.length()==item.getLong("bytes")) continue;
             File parent=target.getParentFile();
-            if(!parent.isDirectory() && !parent.mkdirs()) throw new IllegalStateException("无法创建本地资源目录");
+            if(!parent.isDirectory() && !parent.mkdirs()) throw new IllegalStateException("Unable to create local resource directory");
             File temp=new File(parent,target.getName()+".repairing");
             MessageDigest digest=MessageDigest.getInstance("SHA-256");long size=0;
             try(InputStream input=context.getAssets().open("gateway-release/"+relative);FileOutputStream out=new FileOutputStream(temp)) {
@@ -54,8 +54,8 @@ public final class GatewayGuard {
             }
             StringBuilder hex=new StringBuilder();for(byte value:digest.digest())hex.append(String.format(java.util.Locale.ROOT,"%02x",value&255));
             if(size!=item.getLong("bytes") || !hex.toString().equals(item.getString("sha256")))
-                throw new IllegalStateException("本地支持文件校验失败："+relative);
-            if(!temp.renameTo(target)) throw new IllegalStateException("本地支持文件写入失败："+relative);
+                throw new IllegalStateException("Local support-file verification failed: "+relative);
+            if(!temp.renameTo(target)) throw new IllegalStateException("Unable to write local support file: "+relative);
             repaired++;
         }
         checked=true;
@@ -66,7 +66,7 @@ public final class GatewayGuard {
         HttpURLConnection c=(HttpURLConnection)new URL("http://127.0.0.1:"+port()+"/health").openConnection(Proxy.NO_PROXY);
         c.setConnectTimeout(3000);c.setReadTimeout(15000);c.setUseCaches(false);
         try {
-            if(c.getResponseCode()!=200)throw new IllegalStateException("本地服务健康检查失败");
+            if(c.getResponseCode()!=200)throw new IllegalStateException("Local service health check failed");
             try(InputStream in=c.getInputStream()) {new JSONObject(new String(read(in,65536),StandardCharsets.UTF_8));}
         } finally {c.disconnect();}
     }
@@ -76,9 +76,9 @@ public final class GatewayGuard {
         Class<?> type=Class.forName("org.efootballrevival.runtimeprobe.EmbeddedGateway");
         java.lang.reflect.Field field=type.getDeclaredField("instance");field.setAccessible(true);
         Object instance=field.get(null);
-        if(instance==null)throw new IllegalStateException("本地服务尚未启动");
+        if(instance==null)throw new IllegalStateException("Local service has not started");
         int value=((Number)type.getMethod("getListeningPort").invoke(instance)).intValue();
-        if(value<1 || value>65535)throw new IllegalStateException("本地服务端口尚未就绪");
+        if(value<1 || value>65535)throw new IllegalStateException("Local service port is not ready");
         return value;
     }
 
@@ -90,17 +90,17 @@ public final class GatewayGuard {
 
     public static void showFailure(final Activity activity,Throwable error) {
         Throwable cause=error;for(int i=0;i<12&&cause.getCause()!=null;i++)cause=cause.getCause();
-        final String report="efootxi 1.2 正式版\nAndroid "+android.os.Build.VERSION.RELEASE+" / "+android.os.Build.MANUFACTURER+" "+android.os.Build.MODEL+
+        final String report="Fut 1.2 Stable\nAndroid "+android.os.Build.VERSION.RELEASE+" / "+android.os.Build.MANUFACTURER+" "+android.os.Build.MODEL+
                 "\n"+Log.getStackTraceString(error);
         try(FileOutputStream out=new FileOutputStream(new File(activity.getFilesDir(),"efootxi-startup-error.txt"))){out.write(report.getBytes(StandardCharsets.UTF_8));out.getFD().sync();}
         catch(Exception ignored){ }
         Log.e("EFOOTXI_GATEWAY","startup failed; save retained",error);
-        new AlertDialog.Builder(activity).setTitle("本地存档启动失败")
-            .setMessage("已有存档已保留，请勿清除应用数据。\n\n"+cause.toString()+"\n\n请复制错误详情，发送至 "+FeedbackContact.EMAIL)
-            .setPositiveButton("复制错误详情",new android.content.DialogInterface.OnClickListener(){public void onClick(android.content.DialogInterface dialog,int which){
+        new AlertDialog.Builder(activity).setTitle("Local Save Startup Failed")
+            .setMessage("Your existing save has been preserved. Do not clear app data.\n\n"+cause.toString()+"\n\nCopy the error details and send them to "+FeedbackContact.EMAIL)
+            .setPositiveButton("Copy Error Details",new android.content.DialogInterface.OnClickListener(){public void onClick(android.content.DialogInterface dialog,int which){
                 ((ClipboardManager)activity.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("efootxi startup",report));
-                Toast.makeText(activity,"错误详情已复制",Toast.LENGTH_LONG).show();activity.finish();
-            }}).setNegativeButton("关闭",new android.content.DialogInterface.OnClickListener(){public void onClick(android.content.DialogInterface dialog,int which){activity.finish();}})
-            .setNeutralButton("反馈邮箱",new android.content.DialogInterface.OnClickListener(){public void onClick(android.content.DialogInterface dialog,int which){FeedbackContact.open(activity);}}).setCancelable(false).show();
+                Toast.makeText(activity,"Error details copied",Toast.LENGTH_LONG).show();activity.finish();
+            }}).setNegativeButton("Close",new android.content.DialogInterface.OnClickListener(){public void onClick(android.content.DialogInterface dialog,int which){activity.finish();}})
+            .setNeutralButton("Support",new android.content.DialogInterface.OnClickListener(){public void onClick(android.content.DialogInterface dialog,int which){FeedbackContact.open(activity);}}).setCancelable(false).show();
     }
 }
