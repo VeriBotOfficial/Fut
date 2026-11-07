@@ -43,11 +43,11 @@ public final class UpdateChannel {
         completedMarker = new File(root, "resource-bootstrap-state/complete.marker");
         File cursor = directory;
         while (!cursor.equals(root)) {
-            if (Files.isSymbolicLink(cursor.toPath())) throw new IOException("更新缓存路径无效");
+            if (Files.isSymbolicLink(cursor.toPath())) throw new IOException("Invalid update cache path");
             cursor = cursor.getParentFile();
         }
         if (!directory.isDirectory() && !directory.mkdirs() && !directory.isDirectory())
-            throw new IOException("无法创建更新缓存");
+            throw new IOException("Unable to create update cache");
     }
 
     public Selection resolve(ResourceInstaller.Manifest embedded, String embeddedBaseUrl) throws IOException {
@@ -101,24 +101,24 @@ public final class UpdateChannel {
         if (installed.channelBytes == null) return;
         try {
             Selection checked = select(json(installed.channelBytes), false);
-            if (!checked.manifest.identity.equals(installed.manifest.identity)) throw new IOException("已安装资源与清单不一致");
+            if (!checked.manifest.identity.equals(installed.manifest.identity)) throw new IOException("Installed resources do not match the manifest");
             atomicWrite(file("installed-channel.json"), installed.channelBytes);
         } catch (IOException error) { throw error; }
-        catch (Exception invalid) { throw new IOException("无法保存已安装资源版本", invalid); }
+        catch (Exception invalid) { throw new IOException("Unable to save the installed resource version", invalid); }
     }
 
     private Selection select(JSONObject channel, boolean online) throws Exception {
         validateChannel(channel);
         JSONObject resource = channel.getJSONObject("resources");
-        if (resource.getLong("gameVersionCode") != gameVersionCode) throw new IOException("资源需要不同游戏版本");
+        if (resource.getLong("gameVersionCode") != gameVersionCode) throw new IOException("Resources require a different game version");
         String sha = resource.getString("sha256");
         requireHash(sha);
         long bytes = resource.getLong("bytes");
-        if (bytes <= 0 || bytes > 2 * 1024 * 1024) throw new IOException("更新清单大小无效");
+        if (bytes <= 0 || bytes > 2 * 1024 * 1024) throw new IOException("Invalid update manifest size");
         URL address = repositoryUrl(resource.getString("manifestUrl"));
         String base = resource.getString("baseUrl");
         URL baseAddress = repositoryUrl(base);
-        if (!baseAddress.getPath().endsWith("/")) throw new IOException("资源地址无效");
+        if (!baseAddress.getPath().endsWith("/")) throw new IOException("Invalid resource URL");
         File manifestFile = file("manifest-" + sha + ".json");
         byte[] payload = null;
         try {
@@ -126,36 +126,36 @@ public final class UpdateChannel {
             if (payload.length != bytes || !sha.equals(hash(payload))) payload = null;
         } catch (IOException ignored) { }
         if (payload == null) {
-            if (!online) throw new IOException("缓存的资源清单不完整");
+            if (!online) throw new IOException("Cached resource manifest is incomplete");
             payload = transport.read(address, (int) bytes);
-            if (payload.length != bytes || !sha.equals(hash(payload))) throw new IOException("资源清单校验失败");
+            if (payload.length != bytes || !sha.equals(hash(payload))) throw new IOException("Resource manifest verification failed");
         }
         ResourceInstaller.Manifest manifest = parseManifest(payload);
         if (!packageName.equals(manifest.packageName) || manifest.versionCode != gameVersionCode
                 || !resource.getString("resourceVersion").equals(manifest.resourceVersion))
-            throw new IOException("更新清单与游戏不匹配");
+            throw new IOException("Update manifest does not match the game");
         if (online) atomicWrite(manifestFile, payload);
         return new Selection(manifest, base, channel.optJSONObject("apk"), channel.getLong("revision"), channel.toString().getBytes(StandardCharsets.UTF_8));
     }
 
     private void validateChannel(JSONObject channel) throws Exception {
         if (channel.getInt("schemaVersion") != 1 || !packageName.equals(channel.getString("packageName"))
-                || channel.getLong("revision") < 1) throw new IOException("更新频道无效");
+                || channel.getLong("revision") < 1) throw new IOException("Invalid update channel");
         channel.getJSONObject("resources");
     }
 
     public static ResourceInstaller.Manifest parseManifest(byte[] bytes) throws IOException {
         try {
             JSONObject root = json(bytes);
-            if (root.getInt("schemaVersion") != 1) throw new IOException("不支持的资源清单版本");
+            if (root.getInt("schemaVersion") != 1) throw new IOException("Unsupported resource manifest version");
             JSONArray files = root.getJSONArray("files");
-            if (files.length() < 1 || files.length() > 1000) throw new IOException("资源包数量无效");
+            if (files.length() < 1 || files.length() > 1000) throw new IOException("Invalid number of resource packages");
             ArrayList<ResourceInstaller.Pack> packs = new ArrayList<ResourceInstaller.Pack>();
             int memberCount = 0;
             for (int i = 0; i < files.length(); i++) {
                 JSONObject pack = files.getJSONObject(i);
                 JSONArray members = pack.getJSONArray("entries");
-                if ((memberCount += members.length()) > 20000) throw new IOException("资源文件数量过多");
+                if ((memberCount += members.length()) > 20000) throw new IOException("Too many resource files");
                 ArrayList<ResourceInstaller.Entry> entries = new ArrayList<ResourceInstaller.Entry>();
                 long expanded = 0;
                 for (int j = 0; j < members.length(); j++) {
@@ -164,7 +164,7 @@ public final class UpdateChannel {
                             member.getLong("bytes"), member.getString("sha256"));
                     entries.add(entry); expanded = Math.addExact(expanded, entry.bytes);
                 }
-                if (pack.getLong("expandedBytes") != expanded) throw new IOException("资源清单大小不一致");
+                if (pack.getLong("expandedBytes") != expanded) throw new IOException("Resource manifest size mismatch");
                 String url = pack.optString("url", "");
                 if (!url.isEmpty()) repositoryUrl(url);
                 packs.add(new ResourceInstaller.Pack(pack.getString("name"), pack.getLong("bytes"),
@@ -181,13 +181,13 @@ public final class UpdateChannel {
         ResourceInstaller.validateUrl(url);
         if (!"github.com".equalsIgnoreCase(url.getHost()) || url.getQuery() != null
                 || !url.getPath().matches("/maxlzyver/(efootxi-test|efootxi|73efootball)/releases/download/[A-Za-z0-9][A-Za-z0-9._-]*/([A-Za-z0-9][A-Za-z0-9._-]*)?"))
-            throw new IOException("更新地址必须属于 efootxi 发布仓库");
+            throw new IOException("Update URL must belong to an approved Fut release repository");
         return url;
     }
     private File file(String name) throws IOException {
         File result = new File(directory, name);
         if (Files.isSymbolicLink(result.toPath()) || !result.getCanonicalFile().getParentFile().equals(directory.getCanonicalFile()))
-            throw new IOException("更新缓存路径无效");
+            throw new IOException("Invalid update cache path");
         return result;
     }
     private static JSONObject json(byte[] bytes) throws JSONException { return new JSONObject(new String(bytes, StandardCharsets.UTF_8)); }
@@ -196,7 +196,7 @@ public final class UpdateChannel {
         catch (Exception impossible) { throw new IOException(impossible); }
     }
     private static void requireHash(String value) throws IOException {
-        if (!value.matches("[0-9a-f]{64}")) throw new IOException("更新校验值无效");
+        if (!value.matches("[0-9a-f]{64}")) throw new IOException("Invalid update checksum");
     }
     private static byte[] read(File file, int limit) throws IOException {
         try (InputStream input = new FileInputStream(file)) { return bounded(input, limit); }
@@ -205,14 +205,14 @@ public final class UpdateChannel {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         byte[] buffer = new byte[8192]; int count;
         while ((count = input.read(buffer)) != -1) {
-            if (count > limit - output.size()) throw new IOException("更新清单超过大小限制");
+            if (count > limit - output.size()) throw new IOException("Update manifest exceeds the size limit");
             output.write(buffer, 0, count);
         }
         return output.toByteArray();
     }
     private static void atomicWrite(File destination, byte[] bytes) throws IOException {
         File temporary = new File(destination.getParentFile(), destination.getName() + ".tmp");
-        if (Files.isSymbolicLink(temporary.toPath())) throw new IOException("更新缓存路径无效");
+        if (Files.isSymbolicLink(temporary.toPath())) throw new IOException("Invalid update cache path");
         try (FileOutputStream output = new FileOutputStream(temporary)) { output.write(bytes); output.getFD().sync(); }
         Files.move(temporary.toPath(), destination.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
     }
@@ -224,7 +224,7 @@ public final class UpdateChannel {
             for (int redirect = 0; redirect <= 5; redirect++) {
                 ResourceInstaller.validateUrl(address);
                 long remaining = (deadline - System.nanoTime()) / 1_000_000L;
-                if (remaining <= 0) throw new IOException("更新检查超时");
+                if (remaining <= 0) throw new IOException("Update check timed out");
                 HttpURLConnection connection = (HttpURLConnection) address.openConnection();
                 connection.setInstanceFollowRedirects(false);
                 connection.setConnectTimeout((int) Math.min(2000, remaining));
@@ -236,24 +236,24 @@ public final class UpdateChannel {
                     int code = connection.getResponseCode();
                     if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
                         String location = connection.getHeaderField("Location");
-                        if (location == null) throw new IOException("更新重定向无效");
+                        if (location == null) throw new IOException("Invalid update redirect");
                         address = new URL(address, location); continue;
                     }
                     if (code != 200) throw new IOException("更新检查 HTTP " + code);
                     long length = connection.getContentLengthLong();
-                    if (length > limit) throw new IOException("更新清单超过大小限制");
+                    if (length > limit) throw new IOException("Update manifest exceeds the size limit");
                     try (InputStream input = connection.getInputStream(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
                         byte[] buffer = new byte[8192]; int count;
                         while ((count = input.read(buffer)) != -1) {
-                            if (System.nanoTime() >= deadline) throw new IOException("更新检查超时");
-                            if (count > limit - output.size()) throw new IOException("更新清单超过大小限制");
+                            if (System.nanoTime() >= deadline) throw new IOException("Update check timed out");
+                            if (count > limit - output.size()) throw new IOException("Update manifest exceeds the size limit");
                             output.write(buffer, 0, count);
                         }
                         return output.toByteArray();
                     }
                 } finally { connection.disconnect(); }
             }
-            throw new IOException("更新重定向次数过多");
+            throw new IOException("Too many update redirects");
         }
     }
 }
