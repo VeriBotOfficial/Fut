@@ -9,7 +9,7 @@ import struct
 from android_manifest import _chunks, _strings, _node, _append_strings, patch_manifest
 
 PACKAGE = 'com.efootball.revival.local'
-LABEL = 'efootxi'
+LABEL = 'Fut'
 VERSION_CODE = 311010101
 
 
@@ -43,7 +43,7 @@ def manifest(data, version='1.2'):
         if len(labels) != 1 or labels[0]['type'] != 3:
             raise ValueError('Expected a literal application label')
         label = labels[0]
-        if label['value'] not in (LABEL, '73efootball'):
+        if label['value'] not in (LABEL, 'efootxi', '73efootball'):
             raise ValueError('Unexpected source application label')
         if label['value'] != LABEL:
             if LABEL in strings:
