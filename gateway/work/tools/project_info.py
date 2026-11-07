@@ -9,7 +9,7 @@ PROJECT_URL = 'https://github.com/VeriBotOfficial/Fut'
 STABLE_URL = 'https://github.com/VeriBotOfficial/Fut'
 PROVENANCE = 'Fut is maintained by Doruk Çavdar. This project includes permitted upstream work; see the repository README for attribution.'
 FEEDBACK_EMAIL = ''
-NETWORK_NOTE = '资源托管在 GitHub。下载慢或失败时，请更换可用、稳定的梯子（网络代理）和更快的网络后重试；下载速度仍取决于实际连接。资源完整后可离线游玩。'
+NETWORK_NOTE = 'Game resources are hosted on GitHub. If downloads are slow or fail, switch to a stable network or proxy and try again. Speed still depends on your connection. Once all resources are installed, you can play offline.'
 
 
 def replace_legacy_link(value):
