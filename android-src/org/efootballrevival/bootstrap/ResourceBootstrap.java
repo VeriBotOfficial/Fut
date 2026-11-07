@@ -128,7 +128,7 @@ public final class ResourceBootstrap {
                         result = readyState();
                     } catch (ResourceInstaller.PausedException paused) {
                         resourcesReady = previousResourcesUsable(context, installed, selection);
-                        result = pausedState("Paused", "Completed data will be kept，继续时从断点恢复");
+                        result = pausedState("Paused", "Completed data will be kept. Resume from where you left off.");
                     } catch (Exception error) {
                         // A new update may be incomplete. Only offer old content when the installer verifies it is still usable.
                         resourcesReady = previousResourcesUsable(context, installed, selection);
@@ -189,7 +189,7 @@ public final class ResourceBootstrap {
                         downloadedApk = ApkUpdater.downloadAndVerify(application, installer, offeredUpdate);
                         result = State.note(BootstrapScreen.Stage.INSTALL_READY, "Update downloaded", "Tap Install Update and confirm in Android's installer");
                     } catch (ResourceInstaller.PausedException paused) {
-                        result = pausedState("更新Paused", "Download progress saved. You can resume or enter the game.");
+                        result = pausedState("Update paused", "Download progress saved. You can resume or enter the game.");
                     } catch (Exception error) { result = failure(error); }
                     finish(result);
                 }
@@ -214,7 +214,7 @@ public final class ResourceBootstrap {
                 human = "You're offline and some required resources are still missing. Connect to a network to continue; completed downloads will be kept.";
             else if (error instanceof UnknownHostException || error instanceof SocketTimeoutException || message.contains("HTTP")
                     || message.contains("resolve host") || message.contains("connection") || message.contains("download"))
-                human = "暂时无法Completedownload，请检查网络后重试。已download内容会保留。";
+                human = "The download could not be completed. Check your connection and try again. Downloaded data will be kept.";
             else if (message.contains("storage")) human = message;
             else human = "Resource setup is incomplete, but existing files have been kept. Retry or view the details.";
             StringBuilder details = new StringBuilder(error.getClass().getSimpleName()).append(": ").append(message);
@@ -262,12 +262,12 @@ public final class ResourceBootstrap {
             BootstrapScreen.ProgressUnit unit = BootstrapScreen.ProgressUnit.NONE;
             String title, message; double speed = 0;
             if ("Automatic retry".equals(stage)) {
-                visual = BootstrapScreen.Stage.DOWNLOADING; title = "connection中断，正在Automatic retry";
-                message = "已download的内容会保留。网络恢复后会自动继续，也可以先暂停download。";
+                visual = BootstrapScreen.Stage.DOWNLOADING; title = "Connection lost. Retrying automatically";
+                message = "Downloaded data will be kept. The download will resume when your connection returns, or you can pause it.";
                 unit = BootstrapScreen.ProgressUnit.BYTES; resetSpeed();
             } else if ("Download".equals(stage)) {
-                visual = BootstrapScreen.Stage.DOWNLOADING; title = task == Task.APK ? "正在download应用更新" : "正在download资源";
-                message = "Completed data will be kept，中断后可以继续download"; unit = BootstrapScreen.ProgressUnit.BYTES;
+                visual = BootstrapScreen.Stage.DOWNLOADING; title = task == Task.APK ? "Downloading app update" : "Downloading resources";
+                message = "Completed data will be kept. You can resume after an interruption."; unit = BootstrapScreen.ProgressUnit.BYTES;
                 long now = SystemClock.elapsedRealtime();
                 synchronized (this) {
                     if (!detail.equals(speedTask) || done < speedBytes || speedTime == 0) {
@@ -279,13 +279,13 @@ public final class ResourceBootstrap {
                     speed = measuredSpeed;
                 }
             } else if ("Verification".equals(stage)) {
-                visual = BootstrapScreen.Stage.VERIFYING; title = task == Task.APK ? "正在Verification应用更新" : "正在Verification本地资源";
+                visual = BootstrapScreen.Stage.VERIFYING; title = task == Task.APK ? "Verifying app update" : "Verifying local resources";
                 message = "Reading local files; no data usage"; unit = BootstrapScreen.ProgressUnit.BYTES;
             } else if (stage.equals("Setup") || stage.contains("Extracting") || stage.contains("Deploying") || stage.contains("Installing") || stage.contains("Importing")) {
-                visual = BootstrapScreen.Stage.DEPLOYING; title = "正在Installing资源";
+                visual = BootstrapScreen.Stage.DEPLOYING; title = "Installing resources";
                 message = "Saving verified files. Please wait."; unit = BootstrapScreen.ProgressUnit.BYTES;
             } else {
-                visual = BootstrapScreen.Stage.CHECKING; title = "Complete".equals(stage) ? "资源检查Complete" : stage.equals("Check for updates") ? "正在Check for updates" : "Checking local resources";
+                visual = BootstrapScreen.Stage.CHECKING; title = "Complete".equals(stage) ? "Resource check complete" : stage.equals("Check for updates") ? "正在Check for updates" : "Checking local resources";
                 message = online ? "Verified resources will be reused" : "Using local resources offline; remote updates are not checked";
                 if (total > 0) unit = BootstrapScreen.ProgressUnit.FILES;
             }
@@ -322,7 +322,7 @@ public final class ResourceBootstrap {
                     .canDownloadUpdate(optional && value.stage == BootstrapScreen.Stage.UPDATE_AVAILABLE && offeredUpdate != null && downloadedApk == null)
                     .canInstallUpdate(optional && downloadedApk != null)
                     .canEnterGame(resourcesReady && (!running || task == Task.APK))
-                    .enterGameLabel(running ? "Pause update and enter game" : "进入游戏").build();
+                    .enterGameLabel(running ? "Pause update and enter game" : "Enter Game").build();
             current.render(model);
             if (running) owner.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             else owner.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -335,7 +335,7 @@ public final class ResourceBootstrap {
                         try { owner.recreate(); }
                         catch (RuntimeException error) {
                             passNextLaunch = false; entering = false;
-                            state = State.note(BootstrapScreen.Stage.ERROR, "Resources ready", "请退出后重新打开游戏"); paint();
+                            state = State.note(BootstrapScreen.Stage.ERROR, "Resources ready", "Please exit and reopen the game."); paint();
                         }
                     }
                 });
@@ -360,7 +360,7 @@ public final class ResourceBootstrap {
         try (InputStream input = context.getAssets().open(name); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[8192]; int count;
             while ((count = input.read(buffer)) != -1) {
-                if (output.size() + count > 512 * 1024) throw new IOException("资源配置文件过大");
+                if (output.size() + count > 512 * 1024) throw new IOException("Resource configuration file is too large");
                 output.write(buffer, 0, count);
             }
             return new String(output.toByteArray(), StandardCharsets.UTF_8);
