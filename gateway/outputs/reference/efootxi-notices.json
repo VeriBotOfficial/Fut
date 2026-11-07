@@ -5,14 +5,14 @@
       "newsId": 120000,
       "title": "【置顶】开发来源与修改许可声明",
       "date": 1792166400,
-      "body": "efootxi 第一版基于 73@7othree 版本开发，已获得修改许可。后续版本由 maxlzyver 持续修改与维护。",
+      "body": "Fut 由 Doruk Çavdar 维护。项目包含经许可使用的上游工作，来源说明见项目仓库 README。",
       "priority": 0,
       "readFlag": "0",
       "news_type": 1,
       "frequency_type": "NONE",
       "news_category": 1,
       "banner_name": "",
-      "banner_text": "efootxi · maxlzyver"
+      "banner_text": "Fut · Doruk Çavdar"
     },
     {
       "newsId": 120600,
@@ -25,7 +25,7 @@
       "frequency_type": "NONE",
       "news_category": 1,
       "banner_name": "",
-      "banner_text": "efootxi · maxlzyver"
+      "banner_text": "Fut · Doruk Çavdar"
     },
     {
       "newsId": 120601,
@@ -38,7 +38,7 @@
       "frequency_type": "NONE",
       "news_category": 1,
       "banner_name": "",
-      "banner_text": "efootxi · maxlzyver"
+      "banner_text": "Fut · Doruk Çavdar"
     },
     {
       "newsId": 120602,
@@ -51,7 +51,7 @@
       "frequency_type": "NONE",
       "news_category": 1,
       "banner_name": "",
-      "banner_text": "efootxi · maxlzyver"
+      "banner_text": "Fut · Doruk Çavdar"
     },
     {
       "newsId": 120603,
@@ -64,7 +64,7 @@
       "frequency_type": "NONE",
       "news_category": 1,
       "banner_name": "",
-      "banner_text": "efootxi · maxlzyver"
+      "banner_text": "Fut · Doruk Çavdar"
     },
     {
       "newsId": 120604,
@@ -77,20 +77,20 @@
       "frequency_type": "NONE",
       "news_category": 1,
       "banner_name": "",
-      "banner_text": "efootxi · maxlzyver"
+      "banner_text": "Fut · Doruk Çavdar"
     },
     {
       "newsId": 120605,
       "title": "V1.2 更新公告（6/6）· 已知问题、网络与反馈",
       "date": 1792166400,
-      "body": "45. 部分中国版原创 FP 卡面暂未显示。 包括此前反馈的厄德高、法尔考等，本版尚未补齐对应显示资源，球员仍保留。\n\n46. 瞬发射门、强力抢断暂未开放获取。 未确认的占位技能不会作为已完成技能开放；心有灵犀可在比赛中使用，不代表已经支持额外训练获取。\n\n47. 仍在跟进少数设备问题。 包括特定卡池抽卡闪退、首次联网进入黑屏、组合包购买页面即时刷新、部分球队球衣及特定技能触发问题。\n\n48. 旧版本未保存的数据无法凭空恢复。 过去没有记录的真实比赛进球、助攻，以及已经被覆盖且没有记录的技能，不能可靠补回。\n\n49. 下载网络说明。 资源库托管在 GitHub，下载慢或失败时，请更换好用、稳定的梯子和更快的网络后重试，已有进度会尽量保留。\n\n50. 问题反馈邮箱： lzyuan666666@gmail.com。请附手机型号、Android 版本、游戏版本、复现步骤及截图或录屏。启动失败请提供完整错误文字，先保留应用和存档。\n\n51. 正式项目地址： https://github.com/maxlzyver/efootxi。",
+      "body": "45. 部分中国版原创 FP 卡面暂未显示。 包括此前反馈的厄德高、法尔考等，本版尚未补齐对应显示资源，球员仍保留。\n\n46. 瞬发射门、强力抢断暂未开放获取。 未确认的占位技能不会作为已完成技能开放；心有灵犀可在比赛中使用，不代表已经支持额外训练获取。\n\n47. 仍在跟进少数设备问题。 包括特定卡池抽卡闪退、首次联网进入黑屏、组合包购买页面即时刷新、部分球队球衣及特定技能触发问题。\n\n48. 旧版本未保存的数据无法凭空恢复。 过去没有记录的真实比赛进球、助攻，以及已经被覆盖且没有记录的技能，不能可靠补回。\n\n49. 下载网络说明。 资源库托管在 GitHub，下载慢或失败时，请更换好用、稳定的梯子和更快的网络后重试，已有进度会尽量保留。\n\n50. 问题反馈： https://github.com/VeriBotOfficial/Fut/issues。请附手机型号、Android 版本、游戏版本、复现步骤及截图或录屏。启动失败请提供完整错误文字，先保留应用和存档。\n\n51. 正式项目地址： https://github.com/VeriBotOfficial/Fut。",
       "priority": 6,
       "readFlag": "0",
       "news_type": 1,
       "frequency_type": "NONE",
       "news_category": 1,
       "banner_name": "",
-      "banner_text": "efootxi · maxlzyver"
+      "banner_text": "Fut · Doruk Çavdar"
     },
     {
       "newsId": 120399,
@@ -103,7 +103,7 @@
       "frequency_type": "NONE",
       "news_category": 1,
       "banner_name": "",
-      "banner_text": "efootxi · maxlzyver"
+      "banner_text": "Fut · Doruk Çavdar"
     }
   ]
 }
