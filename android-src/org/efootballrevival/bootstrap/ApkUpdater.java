@@ -210,7 +210,7 @@ public final class ApkUpdater {
                     .authority(activity.getPackageName() + AUTHORITY_SUFFIX).path(URI_PATH).build();
             Intent install = new Intent(Intent.ACTION_VIEW).setDataAndType(uri, MIME)
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            install.setClipData(ClipData.newRawUri("efootxi 更新", uri));
+            install.setClipData(ClipData.newRawUri("Fut 更新", uri));
             activity.startActivity(install);
             return true;
         } catch (RuntimeException error) {
