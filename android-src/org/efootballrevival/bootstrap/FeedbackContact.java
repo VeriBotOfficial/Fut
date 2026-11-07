@@ -10,7 +10,7 @@ import android.widget.Toast;
 
 /** Explicit feedback action on the startup error screen; no game overlay. */
 public final class FeedbackContact {
-    public static final String EMAIL = "lzyuan666666@gmail.com";
+    public static final String ISSUES_URL = "https://github.com/VeriBotOfficial/Fut/issues";
     private FeedbackContact() { }
 
     public static void open(Activity activity) {
