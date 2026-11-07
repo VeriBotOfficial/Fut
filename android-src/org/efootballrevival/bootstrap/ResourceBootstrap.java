@@ -316,7 +316,7 @@ public final class ResourceBootstrap {
                     .version(versionName, buildRevision).resourceVersion(resourceVersion).network(online)
                     .resourcesReady(resourcesReady).text(value.title, value.message)
                     .progress(value.task, value.done, value.total, value.unit).speed(value.speed)
-                    .details("应用 " + versionName + " · 构建 " + buildRevision + "\n资源 " + resourceVersion)
+                    .details("App " + versionName + " · Build " + buildRevision + "\nResources " + resourceVersion)
                     .errorDetails(value.error).canPause(mayPause).canResume(paused && !running)
                     .canRetry(failed && !running && downloadedApk == null)
                     .canDownloadUpdate(optional && value.stage == BootstrapScreen.Stage.UPDATE_AVAILABLE && offeredUpdate != null && downloadedApk == null)
