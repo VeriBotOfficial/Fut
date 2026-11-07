@@ -38,7 +38,7 @@ public final class EfootxiUpdateProvider extends ContentProvider {
                 ? new String[] { OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE } : projection;
         Object[] values = new Object[columns.length];
         for (int index = 0; index < columns.length; index++) {
-            if (OpenableColumns.DISPLAY_NAME.equals(columns[index])) values[index] = "efootxi.apk";
+            if (OpenableColumns.DISPLAY_NAME.equals(columns[index])) values[index] = "Fut.apk";
             else if (OpenableColumns.SIZE.equals(columns[index])) values[index] = file.length();
         }
         MatrixCursor result = new MatrixCursor(columns, 1);
