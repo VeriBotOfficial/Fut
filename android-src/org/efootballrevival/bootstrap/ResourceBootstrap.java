@@ -285,7 +285,7 @@ public final class ResourceBootstrap {
                 visual = BootstrapScreen.Stage.DEPLOYING; title = "Installing resources";
                 message = "Saving verified files. Please wait."; unit = BootstrapScreen.ProgressUnit.BYTES;
             } else {
-                visual = BootstrapScreen.Stage.CHECKING; title = "Complete".equals(stage) ? "Resource check complete" : stage.equals("Check for updates") ? "正在Check for updates" : "Checking local resources";
+                visual = BootstrapScreen.Stage.CHECKING; title = "Complete".equals(stage) ? "Resource check complete" : stage.equals("Check for updates") ? "Checking for updates" : "Checking local resources";
                 message = online ? "Verified resources will be reused" : "Using local resources offline; remote updates are not checked";
                 if (total > 0) unit = BootstrapScreen.ProgressUnit.FILES;
             }
