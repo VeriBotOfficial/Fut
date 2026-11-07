@@ -201,7 +201,7 @@ public final class BootstrapScreen {
         resourceVersion = text("", 16, MUTED, false);
         resourceVersion.setTextIsSelectable(true);
         content.addView(resourceVersion, margin(16));
-        TextView projectNote = text("资源托管在 GitHub。下载慢或失败时，请更换可用、稳定的梯子（网络代理）和更快的网络后重试；下载速度仍取决于实际连接。资源完整后可离线游玩。\n问题反馈：lzyuan666666@gmail.com", 18, MUTED, false);
+        TextView projectNote = text("资源托管在 GitHub。下载慢或失败时，请更换可用、稳定的网络后重试；下载速度取决于实际连接。资源完整后可离线游玩。\\n问题反馈：https://github.com/VeriBotOfficial/Fut/issues", 18, MUTED, false);
         content.addView(projectNote, margin(18));
         TextView provenance = text("Fut 由 Doruk Çavdar 维护。项目包含经许可使用的上游工作，来源说明见项目仓库。", 16, MUTED, false);
         android.text.SpannableString creditedSource = new android.text.SpannableString(provenance.getText());
