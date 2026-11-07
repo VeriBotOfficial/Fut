@@ -723,11 +723,11 @@ def create_squad(conn: sqlite3.Connection, req: dict | None = None) -> dict:
     source_id = main_squad_id(conn)
     source = next((s for s in active if int(s.get("squad_id") or 0) == source_id), None)
     if source is None:
-        source = active[0] if active else {"squad_id": 1, "name": "比赛计划", "squad_data": {}}
+        source = active[0] if active else {"squad_id": 1, "name": "Match Plan", "squad_data": {}}
     clone = json.loads(json.dumps(source, ensure_ascii=False))
     clone["squad_id"] = sid
     requested_name = (req or {}).get("squad_name") or (req or {}).get("name")
-    clone["name"] = str(requested_name) if isinstance(requested_name, str) and requested_name else f"比赛计划 {sid}"
+    clone["name"] = str(requested_name) if isinstance(requested_name, str) and requested_name else f"Match Plan {sid}"
     save_squad(conn, clone)
     if not active or source_id not in used:
         set_meta(conn, "main_squad_id", str(sid))
