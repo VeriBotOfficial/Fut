@@ -202,7 +202,7 @@ public final class ResourceInstaller {
     /** Full content verification is used for a resource update, never on every ordinary launch. */
     public void install(boolean forceVerify) throws IOException {
         checkPaused();
-        report("Checking", "正在Checking已安装资源", 0, manifest.entries.size());
+        report("Checking", "Checking installed resources", 0, manifest.entries.size());
         migrateCompletedSeeds();
         // Do not erase the last successful install when a repair, pause or optional update starts.
         // An offline missing-file check runs before any large-file hash scan.
@@ -368,7 +368,7 @@ public final class ResourceInstaller {
                     }
                     checkPaused();
                     if (written != entry.bytes || !entry.sha256.equals(hex(sha.digest())))
-                        throw new IOException("安装包首次运行数据Verification失败：" + entry.path);
+                        throw new IOException("First-run data verification failed: " + entry.path);
                     if (!preserve) {
                         ensureDirectory(destination.getParentFile()); destination = target(entry.path);
                         atomicMove(temporary, destination);
@@ -411,7 +411,7 @@ public final class ResourceInstaller {
         try { return downloadContentChecked(name, bytes, sha256, address, detail); }
         catch (IOException error) {
             if (paused && !(error instanceof PausedException)) throw new PausedException(error);
-            if (!networkAllowed && !(error instanceof OfflineRequiredException)) throw new OfflineRequiredException(name + "（本地缓存未Complete）");
+            if (!networkAllowed && !(error instanceof OfflineRequiredException)) throw new OfflineRequiredException(name + " (local cache incomplete)");
             throw error;
         } finally { activeConnection = null; }
     }
@@ -499,42 +499,42 @@ public final class ResourceInstaller {
                         catch (IOException error) { throw transportFailure(error); }
                         if (read == -1) break;
                         checkPaused();
-                        if (read > bytes - count) throw new IOException("Download数据超过清单大小：" + name);
+                        if (read > bytes - count) throw new IOException("Downloaded data exceeds the manifest size: " + name);
                         output.write(buffer, 0, read); count += read;
                         report("Download", detail, count, bytes);
                         checkPaused();
                     }
                     output.getFD().sync();
                 }
-                if (count != bytes) throw new RetryableDownloadException("Download中断，将从已保存的位置继续：" + name, null);
+                if (count != bytes) throw new RetryableDownloadException("Download interrupted. It will resume from the saved position: " + name, null);
                 if (!sha256.equals(hash(part, "Verification", detail, 0, bytes))) {
                     delete(part); delete(resume);
-                    throw new IOException("资源包 SHA-256 Verification失败，请重试：" + name);
+                    throw new IOException("Resource package SHA-256 verification failed. Please retry: " + name);
                 }
                 checkPaused();
                 atomicMove(part, archive); delete(resume); return archive;
             } catch (RetryableDownloadException error) {
-                requireNetwork(name + "（连接中断，等待继续Download）");
+                requireNetwork(name + " (connection interrupted; waiting to resume download)");
                 long retained = part.isFile() ? part.length() : 0;
                 // A socket can fail while reading EOF after its last expected byte. Finish by
                 // the mandatory hash rather than issuing a bytes=<size>- request and discarding it.
                 if (retained == bytes) {
                     if (!sha256.equals(hash(part, "Verification", detail, 0, bytes))) {
                         delete(part); delete(resume);
-                        throw new IOException("资源包 SHA-256 Verification失败，请重试：" + name);
+                        throw new IOException("Resource package SHA-256 verification failed. Please retry: " + name);
                     }
                     checkPaused(); atomicMove(part, archive); delete(resume); return archive;
                 }
                 if (retained > checkpoint) { failures = 0; checkpoint = retained; }
                 if (failures >= autoRetries
                         || (error.refreshRedirect && expiredRedirects >= 2))
-                    throw new IOException("Download连接持续不稳定，自动重试后仍未恢复；已保留进度，请调整网络后继续："
+                    throw new IOException("The connection is still unstable after automatic retries. Progress has been saved; adjust your network and resume: "
                             + name + "（" + error.getMessage() + "）", error);
                 failures++; retries++;
                 if (error.refreshRedirect) { expiredRedirects++; refreshRedirect = true; }
                 long delay = Math.max(retryDelayMillis(failures), error.retryAfterMillis);
                 if (connection != null) { connection.disconnect(); connection = null; activeConnection = null; }
-                report("自动重试", "Connection interrupted. Retrying in " + (delay + 999) / 1000 + " seconds (retry " + retries + " )\n" + detail,
+                report("Automatic retry", "Connection interrupted. Retrying in " + (delay + 999) / 1000 + " seconds (retry " + retries + " )\n" + detail,
                         retained, bytes);
                 waitForRetry(delay);
             } finally {
@@ -547,7 +547,7 @@ public final class ResourceInstaller {
     private static IOException transportFailure(IOException error) {
         // Retrying an untrusted TLS endpoint cannot fix its certificate. Never weaken HTTPS.
         if (error instanceof SSLHandshakeException || error instanceof SSLPeerUnverifiedException) return error;
-        return new RetryableDownloadException("Download连接暂时中断", error);
+        return new RetryableDownloadException("Download connection interrupted", error);
     }
 
     private static void checkHttpResponse(HttpURLConnection connection, int code, String name) throws IOException {
@@ -555,9 +555,9 @@ public final class ResourceInstaller {
         long after = retryAfterMillis(connection.getHeaderField("Retry-After"));
         if (code == 408 || code == 425 || code == 429 || (code >= 500 && code <= 599 && code != 501 && code != 505)
                 || (code == 403 && (after > 0 || "0".equals(connection.getHeaderField("X-RateLimit-Remaining")))))
-            throw new RetryableDownloadException("Download服务器暂时不可用（HTTP " + code + "): " + name, null, after, false);
+            throw new RetryableDownloadException("Download server temporarily unavailable (HTTP " + code + "): " + name, null, after, false);
         if (asset && (code == 400 || code == 401 || code == 403))
-            throw new RetryableDownloadException("GitHub 临时Download地址暂不可用，正在重新获取", null, 0, true);
+            throw new RetryableDownloadException("The temporary GitHub download URL is unavailable. Fetching a new URL", null, 0, true);
     }
 
     static long retryDelayMillis(int failure) {
@@ -587,14 +587,14 @@ public final class ResourceInstaller {
     }
 
     private void waitForRetry(long millis) throws IOException {
-        requireNetwork("资源Download尚未Complete");
+        requireNetwork("Resource download is incomplete");
         try {
             if (retryWaiter != null) retryWaiter.await(millis);
             else {
                 long deadline = System.nanoTime() + millis * 1000000;
                 synchronized (retryMonitor) {
                     while (true) {
-                        requireNetwork("资源Download尚未Complete");
+                        requireNetwork("Resource download is incomplete");
                         long remaining = deadline - System.nanoTime();
                         if (remaining <= 0) break;
                         retryMonitor.wait(Math.max(1, (remaining + 999999) / 1000000));
@@ -604,14 +604,14 @@ public final class ResourceInstaller {
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             checkPaused();
-            throw new java.io.InterruptedIOException("Download等待被中断，已保留进度");
+            throw new java.io.InterruptedIOException("Download wait interrupted; progress has been saved");
         }
-        requireNetwork("资源Download尚未Complete");
+        requireNetwork("Resource download is incomplete");
     }
 
     private HttpURLConnection open(URL address, long offset, String etag) throws IOException {
         for (int redirects = 0; redirects <= 5; redirects++) {
-            requireNetwork("资源Download尚未Complete");
+            requireNetwork("Resource download is incomplete");
             validateUrl(address);
             HttpURLConnection connection;
             try { connection = connections.open(address); }
@@ -636,10 +636,10 @@ public final class ResourceInstaller {
             if (code != 301 && code != 302 && code != 303 && code != 307 && code != 308) return connection;
             String location = connection.getHeaderField("Location");
             connection.disconnect();
-            if (location == null || redirects == 5) throw new IOException("资源Download重定向异常");
+            if (location == null || redirects == 5) throw new IOException("Invalid resource download redirect");
             address = new URL(address, location);
         }
-        throw new IOException("资源Download重定向次数过多");
+        throw new IOException("Too many resource download redirects");
     }
 
     static boolean validRange(String value, long offset, long total) {
@@ -708,7 +708,7 @@ public final class ResourceInstaller {
                         if (output != null) output.getFD().sync();
                     }
                     if (written != entry.bytes || !entry.sha256.equals(hex(sha.digest())))
-                        throw new IOException("资源成员Verification失败：" + path);
+                        throw new IOException("Resource entry verification failed: " + path);
                     if (!reuse) {
                         checkPaused();
                         ensureDirectory(destination.getParentFile());
@@ -779,7 +779,7 @@ public final class ResourceInstaller {
     static void validateUrl(URL url) throws IOException {
         if (!"https".equalsIgnoreCase(url.getProtocol()) || !HOSTS.contains(url.getHost().toLowerCase(Locale.ROOT))
                 || (url.getPort() != -1 && url.getPort() != 443) || url.getUserInfo() != null || url.getRef() != null)
-            throw new IOException("资源Download地址不在允许的 HTTPS 域名内");
+            throw new IOException("Resource download URL is not on an allowed HTTPS host");
     }
     private static void validatePath(String path) {
         if (path == null || !(path.startsWith("assetpacks/") || path.startsWith("Download/"))
