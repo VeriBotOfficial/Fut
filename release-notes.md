@@ -1,107 +1,107 @@
-**Fut V1.2 正式版更新公告**
+# Fut V1.2 — Stable Release Notes
 
-> **置顶声明**
+> **Project ownership and upstream attribution**
 >
-> Fut 由 Doruk Çavdar 维护。项目基于 73@**7othree** 的版本并经许可修改；后续上游维护记录归属于 maxlzyver。
+> Fut is maintained by Doruk Çavdar. This project is a permitted modification of work by 73@**7othree**; subsequent upstream maintenance is attributed to maxlzyver.
 
-1. **非普卡预置入库（BT,ST等）。** 将已确认的 6328 个非普卡版本各预置一份，直接进入「球员」列表，满级自动加点，可以查看、培养和安排上场。
+1. **Preloaded non-standard player cards (BT, ST, and others).** One copy of each of the 6,328 confirmed non-standard variants is preloaded into the Players list. Players are fully levelled, receive automatic progression, and can be viewed, trained, and selected for matches.
 
-2. **普卡不在预置范围内。** 预置范围按已确认的卡片类型区分。
+2. **Standard cards are not included in the preload.** The preload is limited to the confirmed card types.
 
-3. **按各卡等级上限培养。** 原本固定 1 级的卡保留原有上限，其他球员按各自上限培养并进行推荐加点。
+3. **Training respects each card's level cap.** Cards originally capped at level 1 keep that cap. Other players are trained to their individual maximum levels and receive recommended progression allocations.
 
-4. **支持继续调整培养方案。** 可以根据自己的打法，在游戏原有培养页面调整加点。
+4. **Training plans remain editable.** You can adjust progression points in the game's existing player-training screen to suit your play style.
 
-5. **预置球员不重复赠送。** 重启和更新不会反复增加同一批赠卡，已解约的预置球员不会重新补回来。
+5. **Preloaded players are not granted more than once.** Restarting or updating the game does not duplicate the same player grants. Players released from the preloaded group are not automatically added again.
 
-6. **保留已有球员状态。** 已保存的培养、附加技能和个人统计继续保留。
+6. **Existing player data is preserved.** Saved training, additional skills, and personal statistics remain intact.
 
-7. **普通技能和 ST 技能均支持自选。** 进入「球员训练 → 技能训练」，使用自选技能道具选择技能。
+7. **Selectable standard and ST skills.** Open Player Training → Skill Training and use a skill-selection item to choose a skill.
 
-8. **自选目录包含 63 项已核准技能。** 使用游戏原有分类、说明和确认页面，已经拥有的技能不会重复添加。
+8. **The selection list contains 63 approved skills.** It uses the game's existing categories, descriptions, and confirmation screens. Skills a player already has are not added again.
 
-9. **修复附加技能槽位错乱。** 五个槽位分别保存，避免连续训练覆盖其他槽位。
+9. **Fixed additional-skill slot assignment.** Each of the five slots is saved independently, preventing consecutive training operations from overwriting another slot.
 
-10. **修复重启后技巧变少的问题。** 已成功保存的附加技能在退出、强退和重新进入后继续保留。
+10. **Fixed skills disappearing after restart.** Successfully saved additional skills remain after exiting, force-closing, and reopening the game.
 
-11. **支持先训练后面的空槽。** 前面的空位不会影响后面槽位的选择和保存。
+11. **Empty slots can be trained independently.** An empty earlier slot no longer blocks selection and saving in a later slot.
 
-12. **支持删除附加技能。** 删除后按游戏原有规则补位并保存，同卡不同副本可以分别搭配技能。
+12. **Additional skills can be removed.** After removal, slots are rearranged and saved according to the game's original rules. Different copies of the same card can have different skill combinations.
 
-13. **修正升级后的等级和点数显示。** 处理升级后出现「0/100」「能力点 -2」、需要重进才能恢复的问题。
+13. **Fixed level and progression-point displays after upgrades.** Addresses incorrect displays such as “0/100” and “Progression points -2” that previously required a restart to correct.
 
-14. **修复比赛内球员风格。** 处理进入比赛后变成「无风格」的问题，风格仍需在适用位置发挥作用。
+14. **Fixed player playing styles in matches.** Addresses players incorrectly appearing with “No Style” after entering a match. Playing styles still only take effect in positions where they apply.
 
-15. **修正惯用脚对应。** 调整左脚球员在比赛中与详情显示不一致的问题。
+15. **Corrected preferred-foot mapping.** Fixes cases where left-footed players appeared differently in matches and player details.
 
-16. **修正逆足精度和使用频率。** 按各张卡自身的数据读取，不统一改成满值。
+16. **Corrected weak-foot accuracy and usage frequency.** Values are read from each individual card rather than being uniformly set to maximum.
 
-17. **修复心有灵犀的比赛效果。** 修复此前无法在比赛中生效的问题。
+17. **Fixed the Through Passing effect in matches.** Restores the effect that previously failed to activate during matches.
 
-18. **培养和技能随球员进入比赛。** 开赛读取当前球员副本的数据，同名卡、同卡不同副本分别保存。
+18. **Player training and skills carry into matches.** Match startup reads data from the selected player instance. Cards with the same name, including separate copies of the same card, retain their own data.
 
-19. **修复正常完赛被判放弃落败的问题。** AI 组别按正常结束状态和实际比分结算，真正中途放弃的比赛仍按放弃处理。
+19. **Fixed normally completed matches being recorded as forfeits.** AI-division results are settled using the actual completion state and score. Matches genuinely abandoned midway are still treated as forfeits.
 
-20. **新增个人比赛统计。** 正常完成比赛后，记录球员出场、进球和助攻。
+20. **Added personal match statistics.** Appearances, goals, and assists are recorded after a match is completed normally.
 
-21. **出场按实际登场计算。** 首发和真正上场的替补计入出场，未登场替补不会增加出场次数。
+21. **Appearances reflect actual time on the pitch.** Starting players and substitutes who enter the match count as appearances. Unused substitutes do not.
 
-22. **个人统计重启保留。** 同一场比赛重复提交结果不会重复累计，更新不会主动清空已保存记录。
+22. **Personal statistics persist across restarts.** Submitting the same match result more than once does not duplicate totals, and updates do not deliberately clear saved records.
 
-23. **修复我的联赛开赛转圈问题。** 开赛统一读取本赛季保存的名单、教练和战术。
+23. **Fixed My League startup hangs.** Starting a match consistently loads the squad, manager, and tactics saved for the current season.
 
-24. **保存我的联赛专用阵容。** 在联赛中调整并保存的球员、教练和战术，重新进入后继续使用。
+24. **Saved a dedicated My League squad.** Players, managers, and tactics changed and saved in My League remain available when you return.
 
-25. **完善我的联赛比分和积分。** 正常完成比赛后保存结果；未进入比赛时，不把占位的 0:0 当成已经踢完。
+25. **Improved My League scores and standings.** Results are saved after completed matches. A placeholder 0–0 is not treated as a played match if the match was never entered.
 
-26. **新增我的联赛进球榜和助攻榜。** 两张榜单同时包含我方球员和 AI 球员。
+26. **Added My League goal and assist leaderboards.** Both leaderboards include user-controlled and AI players.
 
-27. **真实比赛按实际表现记录。** 我方及同场 AI 对手的进球、助攻读取实际比赛事件。
+27. **Real matches use actual match events.** Goals and assists for your players and the AI opponent in the same match are read from the match events.
 
-28. **其他 AI 场次同步生成个人数据。** 联赛其他球队之间的模拟比赛，根据对应球队名单和比分分配进球、助攻。
+28. **Other AI fixtures generate player statistics.** Simulated matches between other league teams distribute goals and assists based on the relevant squads and scores.
 
-29. **补齐全部参赛球队名单。** 当前赛事中的 441 支球队全部覆盖，包括弗鲁米嫩塞、雷莫及 American League 2 球队。
+29. **Completed all participating team rosters.** All 441 teams in the current competition are covered, including Fluminense, Remo, and American League 2 teams.
 
-30. **修复奇数球队联赛的轮空处理。** 轮空时继续准备下一场实际比赛，不给我方凭空增加平局、出场、积分或奖励。
+30. **Fixed byes in leagues with an odd number of teams.** During a bye, the game prepares the next actual fixture without inventing a draw, appearance, points, or rewards for your team.
 
-31. **修复解约后球员重新出现的问题。** 解约只处理选中的那份球员，重启后不会被旧领取记录重新发回。
+31. **Fixed released players reappearing.** Releasing a player affects only the selected player instance. Old grant records no longer add that player again after a restart.
 
-32. **退出旧比赛后可以重新准备比赛。** 未完成的旧比赛不再一直锁住下一场阵容与对手，已保存的历史统计继续保留。
+32. **A new match can be prepared after leaving an old one.** An unfinished previous match no longer locks the next squad and opponent indefinitely. Saved historical statistics remain intact.
 
-33. **原有帧率设置新增 120 帧选项。** 保留其他档位，可以按手机情况选择或切回。
+33. **Added a 120 FPS option.** The existing frame-rate settings retain their other options, so you can choose the setting that suits your device.
 
-34. **120 帧设置支持保存。** 实际帧率取决于手机性能、屏幕刷新率和系统调度，不代表所有设备都能稳定跑满 120 帧。
+34. **The 120 FPS setting is saved.** Actual frame rate depends on device performance, display refresh rate, and system scheduling. Not every device can sustain 120 FPS.
 
-35. **新增功能使用游戏原生界面。** 技能训练、加点和帧率设置均通过游戏原有页面操作。
+35. **New features use the game's native interface.** Skill training, progression allocation, and frame-rate settings are accessed through the game's existing screens.
 
-36. **公告改为主动查看。** 通过游戏右上角通知图标查看更新内容，不再反复自动弹窗。
+36. **Announcements are now opened manually.** Tap the notification icon in the top-right corner of the game to read updates. Announcements no longer repeatedly appear as automatic pop-ups.
 
-37. **新公告显示未读提示。** 阅读后保存已读状态，开发来源与修改许可声明置顶展示。
+37. **Unread announcements are marked.** Read status is saved, and the project ownership and upstream attribution notice stays pinned.
 
-38. **优化手机更新页面。** 使用蓝白配色、较大文字和可滑动布局，展示项目地址、下载说明与反馈邮箱。
+38. **Improved the mobile update screen.** Uses a blue-and-white palette, larger text, and a scrollable layout to show the project address, download information, and support details.
 
-39. **下载失败自动重试。** 遇到短暂断网、超时、断流或 GitHub 临时链接失效时，保留进度并尝试继续，减少反复点击重试。
+39. **Automatic retries for failed downloads.** Temporary network loss, timeouts, interrupted transfers, and expired GitHub temporary links trigger retries while preserving progress.
 
-40. **支持断点续传和资源复用。** 已完整的同版本资源校验后继续使用，需要补齐的文件才重新下载。
+40. **Resumable downloads and resource reuse.** Complete resources from the same version are verified and reused. Only missing or incomplete files need to be downloaded again.
 
-41. **资源准备完成后可离线游玩。** 首次安装需联网自动准备资源，不用手动选择、搬运或解压资源包。
+41. **Offline play after resource setup.** The first launch downloads and prepares the required resources automatically. You do not need to select, move, or extract resource packages manually.
 
-42. **改善第二次启动报错。** 处理已反馈的本地启动冲突，保留存档保护和错误详情。
+42. **Improved handling of second-launch errors.** Addresses reported local startup conflicts while retaining save protection and detailed error information.
 
-43. **旧正式版请覆盖安装。** 按系统提示安装 V1.2，保留原正式版数据，**不要先卸载或清除应用数据**。
+43. **Install over the previous stable release.** Follow Android's prompts to install V1.2 over the existing stable app. Existing stable data is preserved. **Do not uninstall the old app or clear its data first.**
 
-44. **支持 Android 12 及以上的 ARM64 手机。** 不同设备的运行表现以实际使用为准。
+44. **Supports ARM64 devices running Android 12 or later.** Actual performance varies by device.
 
-45. **部分中国版原创 FP 卡面暂未显示。** 包括此前反馈的厄德高、法尔考等，本版尚未补齐对应显示资源，球员仍保留。
+45. **Some original FP card artwork from the Chinese client is not displayed yet.** This includes previously reported cards such as Martin Ødegaard and Radamel Falcao. The players themselves remain available; the corresponding display assets have not yet been added.
 
-46. **瞬发射门、强力抢断暂未开放获取。** 未确认的占位技能不会作为已完成技能开放；心有灵犀可在比赛中使用，不代表已经支持额外训练获取。
+46. **Blitz Curler and Long Reach Tackle are not yet available to obtain.** Unverified placeholder skills are not exposed as completed skills. The Through Passing effect can be used in matches, but this does not mean it is available through additional skill training.
 
-47. **仍在跟进少数设备问题。** 包括特定卡池抽卡闪退、首次联网进入黑屏、组合包购买页面即时刷新、部分球队球衣及特定技能触发问题。
+47. **A small number of device-specific issues are still being investigated.** These include crashes when opening certain packs, a black screen on the first online launch, immediate refreshes on combination-pack purchase screens, some team kits, and certain skill-trigger issues.
 
-48. **旧版本未保存的数据无法凭空恢复。** 过去没有记录的真实比赛进球、助攻，以及已经被覆盖且没有记录的技能，不能可靠补回。
+48. **Data that was never saved by an older version cannot be reconstructed.** Historical match goals and assists that were never recorded, and skills that were overwritten without a saved record, cannot be reliably restored.
 
-49. **下载网络说明。** 资源库托管在 GitHub，下载慢或失败时，请更换好用、稳定的梯子和更快的网络后重试，已有进度会尽量保留。
+49. **Download network information.** Game resources are hosted on GitHub. If downloads are slow or fail, try a stable network or proxy. Existing progress is retained whenever possible.
 
-50. **问题反馈：** [GitHub Issues](https://github.com/VeriBotOfficial/Fut/issues)。请附手机型号、Android 版本、游戏版本、复现步骤及截图或录屏。启动失败请提供完整错误文字，先保留应用和存档。
+50. **Support:** [GitHub Issues](https://github.com/VeriBotOfficial/Fut/issues). Include your device model, Android version, game version, reproduction steps, and screenshots or a screen recording. If startup fails, provide the complete error text. Keep the app and save data installed.
 
-51. **正式项目地址：** [github.com/VeriBotOfficial/Fut](https://github.com/VeriBotOfficial/Fut)。
+51. **Official project:** [github.com/VeriBotOfficial/Fut](https://github.com/VeriBotOfficial/Fut).
