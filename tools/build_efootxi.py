@@ -1,4 +1,4 @@
-"""Build a local efootxi APK from the reviewed API31 package, preserving game code."""
+"""Build a local Fut APK from the reviewed API31 package, preserving game code."""
 import copy
 import argparse
 import hashlib
@@ -123,7 +123,7 @@ def main():
     badging = run(SDK / 'aapt2.exe', 'dump', 'badging', apk)
     assert "versionCode='311010101' versionName='" + version + "'" in badging
     assert "minSdkVersion:'31'" in badging and "targetSdkVersion:'36'" in badging
-    assert "application-label:'efootxi'" in badging
+    assert "application-label:'Fut'" in badging
     assert 'android.permission.REQUEST_INSTALL_PACKAGES' in badging
     xml = run(SDK / 'aapt2.exe', 'dump', 'xmltree', apk, '--file', 'AndroidManifest.xml')
     assert 'org.efootballrevival.bootstrap.EfootxiUpdateProvider' in xml
