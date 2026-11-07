@@ -33,11 +33,11 @@ public final class ResourceInstaller {
         }
     }
     public static final class PausedException extends IOException {
-        public PausedException() { super("已暂停，已保存进度；继续后从断点恢复"); }
-        PausedException(Throwable cause) { super("已暂停，已保存进度；继续后从断点恢复", cause); }
+        public PausedException() { super("Paused. Progress saved; resume to continue from the saved position"); }
+        PausedException(Throwable cause) { super("Paused. Progress saved; resume to continue from the saved position", cause); }
     }
     public static final class OfflineRequiredException extends IOException {
-        public OfflineRequiredException(String reason) { super("本地必要资源尚未完整，联网后可继续准备：" + reason); }
+        public OfflineRequiredException(String reason) { super("Required local resources are incomplete. Connect to the internet to continue: " + reason); }
     }
 
     public static final class Entry {
@@ -46,7 +46,7 @@ public final class ResourceInstaller {
         public Entry(String path, long bytes, String sha256) {
             validatePath(path);
             validateHash(sha256);
-            if (bytes < 0) throw new IllegalArgumentException("资源大小无效");
+            if (bytes < 0) throw new IllegalArgumentException("Invalid resource size");
             this.path = path; this.bytes = bytes; this.sha256 = sha256;
         }
     }
@@ -61,10 +61,10 @@ public final class ResourceInstaller {
         }
         public Pack(String name, long bytes, String sha256, List<Entry> entries, String url, boolean allowSubset) {
             if (name == null || !name.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,119}\\.zip"))
-                throw new IllegalArgumentException("资源包名称无效");
+                throw new IllegalArgumentException("Invalid resource package name");
             validateHash(sha256);
             if (bytes <= 0 || entries == null || entries.isEmpty())
-                throw new IllegalArgumentException("资源包清单为空或大小无效");
+                throw new IllegalArgumentException("Resource package manifest is empty or has an invalid size");
             this.name = name; this.bytes = bytes; this.sha256 = sha256;
             this.url = url; this.allowSubset = allowSubset;
             this.entries = Collections.unmodifiableList(new ArrayList<Entry>(entries));
@@ -78,7 +78,7 @@ public final class ResourceInstaller {
         public final List<Entry> entries;
         public Manifest(String packageName, long versionCode, String resourceVersion, List<Pack> packs) {
             if (packageName == null || resourceVersion == null || resourceVersion.isEmpty()
-                    || packs == null || packs.isEmpty()) throw new IllegalArgumentException("资源清单无效");
+                    || packs == null || packs.isEmpty()) throw new IllegalArgumentException("Invalid resource manifest");
             this.packageName = packageName; this.versionCode = versionCode;
             this.resourceVersion = resourceVersion;
             this.packs = Collections.unmodifiableList(new ArrayList<Pack>(packs));
@@ -88,11 +88,11 @@ public final class ResourceInstaller {
             update(digest, packageName, Long.toString(versionCode), resourceVersion);
             long expanded = 0, downloaded = 0;
             for (Pack pack : packs) {
-                if (!names.add(pack.name)) throw new IllegalArgumentException("重复资源包");
+                if (!names.add(pack.name)) throw new IllegalArgumentException("Duplicate resource package");
                 downloaded = Math.addExact(downloaded, pack.bytes);
                 update(digest, pack.name, Long.toString(pack.bytes), pack.sha256);
                 for (Entry entry : pack.entries) {
-                    if (!paths.add(entry.path)) throw new IllegalArgumentException("重复资源路径");
+                    if (!paths.add(entry.path)) throw new IllegalArgumentException("Duplicate resource path");
                     expanded = Math.addExact(expanded, entry.bytes);
                     update(digest, entry.path, Long.toString(entry.bytes), entry.sha256);
                     all.add(entry);
@@ -146,7 +146,7 @@ public final class ResourceInstaller {
     /** A test can use a short retry budget and virtual wait without changing transport semantics. */
     ResourceInstaller(File filesDir, Manifest manifest, String baseUrl, Listener listener,
             ConnectionFactory connections, SpaceChecker space, int autoRetries, RetryWaiter retryWaiter) throws IOException {
-        if (autoRetries < 0 || autoRetries > AUTO_RETRIES) throw new IllegalArgumentException("自动重试次数无效");
+        if (autoRetries < 0 || autoRetries > AUTO_RETRIES) throw new IllegalArgumentException("Invalid automatic retry count");
         this.root = filesDir.getCanonicalFile();
         this.manifest = manifest; this.listener = listener;
         this.autoRetries = autoRetries; this.retryWaiter = retryWaiter;
@@ -155,7 +155,7 @@ public final class ResourceInstaller {
         validateUrl(this.baseUrl);
         if (!this.baseUrl.getHost().equalsIgnoreCase("github.com")
                 || !this.baseUrl.getPath().matches("/[^/]+/[^/]+/releases/download/[^/]+/"))
-            throw new IOException("资源地址必须是固定版本的 GitHub Release");
+            throw new IOException("Resource URL must point to a versioned GitHub Release");
         this.state = new File(root, "resource-bootstrap-state");
         ensureDirectory(state);
         this.marker = stateFile("complete.marker");
@@ -202,7 +202,7 @@ public final class ResourceInstaller {
     /** Full content verification is used for a resource update, never on every ordinary launch. */
     public void install(boolean forceVerify) throws IOException {
         checkPaused();
-        report("检查", "正在检查已安装资源", 0, manifest.entries.size());
+        report("Checking", "正在Checking已安装资源", 0, manifest.entries.size());
         migrateCompletedSeeds();
         // Do not erase the last successful install when a repair, pause or optional update starts.
         // An offline missing-file check runs before any large-file hash scan.
@@ -228,7 +228,7 @@ public final class ResourceInstaller {
         }
         long required = needsDownload ? Math.addExact(peak, RESERVE) : 0;
         if (needsDownload && space.available(root) < required)
-            throw new IOException(String.format(Locale.ROOT, "空间不足：还需至少 %.2f GB 可用空间", required / 1e9));
+            throw new IOException(String.format(Locale.ROOT, "Not enough storage: at least %.2f GB of free space is required", required / 1e9));
         int index = 0;
         for (Pack pack : manifest.packs) {
             checkPaused();
@@ -243,12 +243,12 @@ public final class ResourceInstaller {
             File file = target(entry.path);
             if (!verified.contains(entry.path) || (!seedVerified(entry)
                     && (!file.isFile() || file.length() != entry.bytes)))
-                throw new IOException("资源部署不完整：" + entry.path);
+                throw new IOException("Resource installation is incomplete: " + entry.path);
         }
         checkPaused();
         saveReceipts();
         if (!matchingMarker()) atomicWrite(marker, markerText().getBytes(StandardCharsets.UTF_8));
-        report("完成", "资源已就绪", 1, 1);
+        report("Complete", "Resources ready", 1, 1);
     }
 
     private boolean matchingMarker() throws IOException {
@@ -305,7 +305,7 @@ public final class ResourceInstaller {
             if (seedVerified(entry)) continue;
             File file = target(entry.path);
             if ((!file.isFile() || file.length() != entry.bytes) && !canRepairLocally(entry)) {
-                String reason = entry.path + (file.isFile() ? "（大小不符）" : "（文件缺失）");
+                String reason = entry.path + (file.isFile() ? " (size mismatch)" : " (file missing)");
                 problem(reason); throw new OfflineRequiredException(reason);
             }
         }
@@ -321,12 +321,12 @@ public final class ResourceInstaller {
                 File file = target(entry.path);
                 String reason = null;
                 if (seedVerified(entry)) verified.add(entry.path);
-                else if (!file.isFile()) reason = "文件缺失";
-                else if (file.length() != entry.bytes) reason = "大小不符，当前 " + file.length() + "，需要 " + entry.bytes;
+                else if (!file.isFile()) reason = "File missing";
+                else if (file.length() != entry.bytes) reason = "Size mismatch; current size: " + file.length() + ", required: " + entry.bytes;
                 else if ((!forceVerify && !ResourcePolicy.isSeed(entry) && contentVerified(entry, file))
-                        || entry.sha256.equals(hash(file, "校验", "核实已有资源", checked, manifest.expandedBytes))) {
+                        || entry.sha256.equals(hash(file, "Verification", "Verifying existing resources", checked, manifest.expandedBytes))) {
                     verified.add(entry.path); recordVerified(entry, file);
-                } else reason = "SHA-256 不符";
+                } else reason = "SHA-256 mismatch";
                 if (reason != null) {
                     invalidateReceipt(entry);
                     problem(entry.path + "（" + reason + "）");
@@ -334,7 +334,7 @@ public final class ResourceInstaller {
                         throw new OfflineRequiredException(entry.path + "（" + reason + "）");
                 }
                 checked += entry.bytes;
-                report("检查", "核实已有资源", checked, manifest.expandedBytes);
+                report("Checking", "Verifying existing resources", checked, manifest.expandedBytes);
             }
             return verified;
         } finally { saveReceipts(); }
@@ -355,20 +355,20 @@ public final class ResourceInstaller {
                 try {
                     try (InputStream input = seedSource.open(entry.path);
                          FileOutputStream output = preserve ? null : new FileOutputStream(temporary)) {
-                        if (input == null) throw new IOException("安装包缺少首次运行数据：" + entry.path);
+                        if (input == null) throw new IOException("The APK is missing first-run data: " + entry.path);
                         byte[] buffer = new byte[BUFFER]; int count;
                         while ((count = input.read(buffer)) != -1) {
                             checkPaused();
-                            if (count > entry.bytes - written) throw new IOException("首次运行数据大小异常：" + entry.path);
+                            if (count > entry.bytes - written) throw new IOException("Unexpected first-run data size: " + entry.path);
                             sha.update(buffer, 0, count); written += count;
                             if (output != null) output.write(buffer, 0, count);
-                            report("准备", "核实首次运行数据", written, entry.bytes);
+                            report("准备", "Verifying first-run data", written, entry.bytes);
                         }
                         if (output != null) output.getFD().sync();
                     }
                     checkPaused();
                     if (written != entry.bytes || !entry.sha256.equals(hex(sha.digest())))
-                        throw new IOException("安装包首次运行数据校验失败：" + entry.path);
+                        throw new IOException("安装包首次运行数据Verification失败：" + entry.path);
                     if (!preserve) {
                         ensureDirectory(destination.getParentFile()); destination = target(entry.path);
                         atomicMove(temporary, destination);
@@ -399,19 +399,19 @@ public final class ResourceInstaller {
     /** Downloads an APK with the same resumable transport and mandatory complete SHA-256 check. */
     public File downloadArtifact(String name, long bytes, String sha256, String url) throws IOException {
         if (name == null || !name.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,119}\\.apk") || bytes <= 0)
-            throw new IOException("安装包名称或大小无效");
+            throw new IOException("Invalid update package name or size");
         try { validateHash(sha256); }
         catch (IllegalArgumentException invalid) { throw new IOException(invalid.getMessage(), invalid); }
         long cached = Math.min(bytes, Math.max(stateFile(name).length(), stateFile(name + ".part").length()));
-        if (space.available(root) < bytes - cached + RESERVE) throw new IOException("下载更新所需空间不足");
-        return downloadContent(name, bytes, sha256, new URL(url), "应用更新");
+        if (space.available(root) < bytes - cached + RESERVE) throw new IOException("Not enough storage to download the update");
+        return downloadContent(name, bytes, sha256, new URL(url), "App update");
     }
 
     private File downloadContent(String name, long bytes, String sha256, URL address, String detail) throws IOException {
         try { return downloadContentChecked(name, bytes, sha256, address, detail); }
         catch (IOException error) {
             if (paused && !(error instanceof PausedException)) throw new PausedException(error);
-            if (!networkAllowed && !(error instanceof OfflineRequiredException)) throw new OfflineRequiredException(name + "（本地缓存未完成）");
+            if (!networkAllowed && !(error instanceof OfflineRequiredException)) throw new OfflineRequiredException(name + "（本地缓存未Complete）");
             throw error;
         } finally { activeConnection = null; }
     }
@@ -422,7 +422,7 @@ public final class ResourceInstaller {
         File archive = stateFile(name), part = stateFile(name + ".part");
         File resume = stateFile(name + ".resume");
         if (archive.isFile()) {
-            if (archive.length() == bytes && sha256.equals(hash(archive, "校验", detail, 0, bytes)))
+            if (archive.length() == bytes && sha256.equals(hash(archive, "Verification", detail, 0, bytes)))
                 return archive;
             delete(archive);
         }
@@ -436,7 +436,7 @@ public final class ResourceInstaller {
             delete(part); delete(resume); etag = "";
         }
         if (part.isFile() && part.length() == bytes) {
-            if (sha256.equals(hash(part, "校验", detail, 0, bytes))) {
+            if (sha256.equals(hash(part, "Verification", detail, 0, bytes))) {
                 atomicMove(part, archive); delete(resume); return archive;
             }
             delete(part); delete(resume); etag = "";
@@ -448,7 +448,7 @@ public final class ResourceInstaller {
         long checkpoint = part.isFile() ? part.length() : 0;
         boolean refreshRedirect = false;
         while (true) {
-            requireNetwork(name + "（需要下载或继续下载）");
+            requireNetwork(name + "（download or resume required）");
             long offset = part.isFile() ? part.length() : 0;
             HttpURLConnection connection = null;
             try {
@@ -467,17 +467,17 @@ public final class ResourceInstaller {
                     // A 200 means If-Range failed or the server ignored Range; consume its complete representation.
                     if (code != 200) {
                         if (code != 206 && code != 416)
-                            throw new IOException("下载失败（HTTP " + code + "），已保留续传数据：" + name);
-                        if (rangeRestarts++ >= 1) throw new IOException("服务器不支持安全续传：" + name);
+                            throw new IOException("Download failed (HTTP " + code + "); resumable data has been saved: " + name);
+                        if (rangeRestarts++ >= 1) throw new IOException("Server does not support safe resume: " + name);
                         delete(part); delete(resume); etag = ""; continue;
                     }
                     offset = 0;
                 }
                 if ((!append && code != 200) || !expectedLength(connection, bytes - offset))
-                    throw new IOException("下载响应异常（HTTP " + code + "）：" + name);
+                    throw new IOException("Unexpected download response (HTTP " + code + "): " + name);
                 String encoding = connection.getHeaderField("Content-Encoding");
                 if (encoding != null && !encoding.isEmpty() && !encoding.equalsIgnoreCase("identity"))
-                    throw new IOException("下载服务器返回了不支持的压缩传输");
+                    throw new IOException("The download server returned an unsupported content encoding");
                 expiredRedirects = 0; // Only consecutive rejected signed links share this budget.
                 Properties metadata = new Properties();
                 metadata.setProperty("identity", expected);
@@ -492,49 +492,49 @@ public final class ResourceInstaller {
                 catch (IOException error) { throw transportFailure(error); }
                 try (InputStream input = body; FileOutputStream output = new FileOutputStream(part, true)) {
                     byte[] buffer = new byte[BUFFER];
-                    report("下载", detail, count, bytes);
+                    report("Download", detail, count, bytes);
                     int read;
                     while (true) {
                         try { read = input.read(buffer); }
                         catch (IOException error) { throw transportFailure(error); }
                         if (read == -1) break;
                         checkPaused();
-                        if (read > bytes - count) throw new IOException("下载数据超过清单大小：" + name);
+                        if (read > bytes - count) throw new IOException("Download数据超过清单大小：" + name);
                         output.write(buffer, 0, read); count += read;
-                        report("下载", detail, count, bytes);
+                        report("Download", detail, count, bytes);
                         checkPaused();
                     }
                     output.getFD().sync();
                 }
-                if (count != bytes) throw new RetryableDownloadException("下载中断，将从已保存的位置继续：" + name, null);
-                if (!sha256.equals(hash(part, "校验", detail, 0, bytes))) {
+                if (count != bytes) throw new RetryableDownloadException("Download中断，将从已保存的位置继续：" + name, null);
+                if (!sha256.equals(hash(part, "Verification", detail, 0, bytes))) {
                     delete(part); delete(resume);
-                    throw new IOException("资源包 SHA-256 校验失败，请重试：" + name);
+                    throw new IOException("资源包 SHA-256 Verification失败，请重试：" + name);
                 }
                 checkPaused();
                 atomicMove(part, archive); delete(resume); return archive;
             } catch (RetryableDownloadException error) {
-                requireNetwork(name + "（连接中断，等待继续下载）");
+                requireNetwork(name + "（连接中断，等待继续Download）");
                 long retained = part.isFile() ? part.length() : 0;
                 // A socket can fail while reading EOF after its last expected byte. Finish by
                 // the mandatory hash rather than issuing a bytes=<size>- request and discarding it.
                 if (retained == bytes) {
-                    if (!sha256.equals(hash(part, "校验", detail, 0, bytes))) {
+                    if (!sha256.equals(hash(part, "Verification", detail, 0, bytes))) {
                         delete(part); delete(resume);
-                        throw new IOException("资源包 SHA-256 校验失败，请重试：" + name);
+                        throw new IOException("资源包 SHA-256 Verification失败，请重试：" + name);
                     }
                     checkPaused(); atomicMove(part, archive); delete(resume); return archive;
                 }
                 if (retained > checkpoint) { failures = 0; checkpoint = retained; }
                 if (failures >= autoRetries
                         || (error.refreshRedirect && expiredRedirects >= 2))
-                    throw new IOException("下载连接持续不稳定，自动重试后仍未恢复；已保留进度，请调整网络后继续："
+                    throw new IOException("Download连接持续不稳定，自动重试后仍未恢复；已保留进度，请调整网络后继续："
                             + name + "（" + error.getMessage() + "）", error);
                 failures++; retries++;
                 if (error.refreshRedirect) { expiredRedirects++; refreshRedirect = true; }
                 long delay = Math.max(retryDelayMillis(failures), error.retryAfterMillis);
                 if (connection != null) { connection.disconnect(); connection = null; activeConnection = null; }
-                report("自动重试", "连接暂时中断，" + (delay + 999) / 1000 + " 秒后自动重试（第 " + retries + " 次）\n" + detail,
+                report("自动重试", "Connection interrupted. Retrying in " + (delay + 999) / 1000 + " seconds (retry " + retries + " )\n" + detail,
                         retained, bytes);
                 waitForRetry(delay);
             } finally {
@@ -547,7 +547,7 @@ public final class ResourceInstaller {
     private static IOException transportFailure(IOException error) {
         // Retrying an untrusted TLS endpoint cannot fix its certificate. Never weaken HTTPS.
         if (error instanceof SSLHandshakeException || error instanceof SSLPeerUnverifiedException) return error;
-        return new RetryableDownloadException("下载连接暂时中断", error);
+        return new RetryableDownloadException("Download连接暂时中断", error);
     }
 
     private static void checkHttpResponse(HttpURLConnection connection, int code, String name) throws IOException {
@@ -555,9 +555,9 @@ public final class ResourceInstaller {
         long after = retryAfterMillis(connection.getHeaderField("Retry-After"));
         if (code == 408 || code == 425 || code == 429 || (code >= 500 && code <= 599 && code != 501 && code != 505)
                 || (code == 403 && (after > 0 || "0".equals(connection.getHeaderField("X-RateLimit-Remaining")))))
-            throw new RetryableDownloadException("下载服务器暂时不可用（HTTP " + code + "）：" + name, null, after, false);
+            throw new RetryableDownloadException("Download服务器暂时不可用（HTTP " + code + "): " + name, null, after, false);
         if (asset && (code == 400 || code == 401 || code == 403))
-            throw new RetryableDownloadException("GitHub 临时下载地址暂不可用，正在重新获取", null, 0, true);
+            throw new RetryableDownloadException("GitHub 临时Download地址暂不可用，正在重新获取", null, 0, true);
     }
 
     static long retryDelayMillis(int failure) {
@@ -587,14 +587,14 @@ public final class ResourceInstaller {
     }
 
     private void waitForRetry(long millis) throws IOException {
-        requireNetwork("资源下载尚未完成");
+        requireNetwork("资源Download尚未Complete");
         try {
             if (retryWaiter != null) retryWaiter.await(millis);
             else {
                 long deadline = System.nanoTime() + millis * 1000000;
                 synchronized (retryMonitor) {
                     while (true) {
-                        requireNetwork("资源下载尚未完成");
+                        requireNetwork("资源Download尚未Complete");
                         long remaining = deadline - System.nanoTime();
                         if (remaining <= 0) break;
                         retryMonitor.wait(Math.max(1, (remaining + 999999) / 1000000));
@@ -604,14 +604,14 @@ public final class ResourceInstaller {
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             checkPaused();
-            throw new java.io.InterruptedIOException("下载等待被中断，已保留进度");
+            throw new java.io.InterruptedIOException("Download等待被中断，已保留进度");
         }
-        requireNetwork("资源下载尚未完成");
+        requireNetwork("资源Download尚未Complete");
     }
 
     private HttpURLConnection open(URL address, long offset, String etag) throws IOException {
         for (int redirects = 0; redirects <= 5; redirects++) {
-            requireNetwork("资源下载尚未完成");
+            requireNetwork("资源Download尚未Complete");
             validateUrl(address);
             HttpURLConnection connection;
             try { connection = connections.open(address); }
@@ -636,10 +636,10 @@ public final class ResourceInstaller {
             if (code != 301 && code != 302 && code != 303 && code != 307 && code != 308) return connection;
             String location = connection.getHeaderField("Location");
             connection.disconnect();
-            if (location == null || redirects == 5) throw new IOException("资源下载重定向异常");
+            if (location == null || redirects == 5) throw new IOException("资源Download重定向异常");
             address = new URL(address, location);
         }
-        throw new IOException("资源下载重定向次数过多");
+        throw new IOException("资源Download重定向次数过多");
     }
 
     static boolean validRange(String value, long offset, long total) {
@@ -677,11 +677,11 @@ public final class ResourceInstaller {
                 String path = member.getName();
                 Entry entry = allowed.get(path);
                 try { validatePath(path); }
-                catch (IllegalArgumentException invalid) { throw new IOException("资源包包含非法路径：" + path, invalid); }
+                catch (IllegalArgumentException invalid) { throw new IOException("Resource package contains an invalid path: " + path, invalid); }
                 if (member.isDirectory() || !seen.add(path))
-                    throw new IOException("资源包包含未声明或重复的路径：" + path);
+                    throw new IOException("Resource package contains an undeclared or duplicate path: " + path);
                 if (entry == null) {
-                    if (!pack.allowSubset) throw new IOException("资源包包含未声明的路径：" + path);
+                    if (!pack.allowSubset) throw new IOException("Resource package contains an undeclared path: " + path);
                     // A prior immutable archive may also contain files superseded by a newer pack.
                     // Its complete SHA was checked before extraction; omitted members never write.
                     while (input.read(buffer) != -1) checkPaused();
@@ -689,7 +689,7 @@ public final class ResourceInstaller {
                 }
                 File destination = target(path);
                 if (member.getSize() != -1 && member.getSize() != entry.bytes)
-                    throw new IOException("资源成员大小不符：" + path);
+                    throw new IOException("Resource entry size mismatch: " + path);
                 boolean reuse = verified.contains(path);
                 File temporary = stateFile("stage-" + entry.sha256 + ".tmp");
                 MessageDigest sha = digest();
@@ -699,16 +699,16 @@ public final class ResourceInstaller {
                         int read;
                         while ((read = input.read(buffer)) != -1) {
                             checkPaused();
-                            if (read > entry.bytes - written) throw new IOException("资源成员超过清单大小：" + path);
+                            if (read > entry.bytes - written) throw new IOException("Resource entry exceeds the manifest size: " + path);
                             sha.update(buffer, 0, read);
                             if (output != null) output.write(buffer, 0, read);
                             written += read;
-                            report("解压", detail, done + written, total);
+                            report("Extracting", detail, done + written, total);
                         }
                         if (output != null) output.getFD().sync();
                     }
                     if (written != entry.bytes || !entry.sha256.equals(hex(sha.digest())))
-                        throw new IOException("资源成员校验失败：" + path);
+                        throw new IOException("资源成员Verification失败：" + path);
                     if (!reuse) {
                         checkPaused();
                         ensureDirectory(destination.getParentFile());
@@ -720,8 +720,8 @@ public final class ResourceInstaller {
                 } finally { delete(temporary); }
             }
         }
-        if (!seen.containsAll(allowed.keySet())) throw new IOException("资源包缺少清单成员：" + pack.name);
-        report("解压", detail, total, total);
+        if (!seen.containsAll(allowed.keySet())) throw new IOException("Resource package is missing a manifest entry: " + pack.name);
+        report("Extracting", detail, total, total);
     }
 
     private String hash(File file, String stage, String detail, long offset, long total) throws IOException {
@@ -754,10 +754,10 @@ public final class ResourceInstaller {
     private void checkInside(File file) throws IOException {
         File canonical = file.getCanonicalFile();
         if (!canonical.getPath().startsWith(root.getPath() + File.separator))
-            throw new IOException("拒绝访问资源目录之外的文件");
+            throw new IOException("Access to files outside the resource directory is denied");
         File cursor = file;
         while (cursor != null && !cursor.equals(root)) {
-            if (Files.isSymbolicLink(cursor.toPath())) throw new IOException("资源路径包含符号链接");
+            if (Files.isSymbolicLink(cursor.toPath())) throw new IOException("Resource path contains a symbolic link");
             cursor = cursor.getParentFile();
         }
     }
@@ -765,7 +765,7 @@ public final class ResourceInstaller {
     private void ensureDirectory(File directory) throws IOException {
         if (!directory.equals(root)) checkInside(directory);
         if (!directory.isDirectory() && !directory.mkdirs() && !directory.isDirectory())
-            throw new IOException("无法创建资源目录");
+            throw new IOException("Unable to create resource directory");
     }
 
     private String markerText() { return "resource-bootstrap-v1\n" + manifest.identity + "\n"; }
@@ -779,17 +779,17 @@ public final class ResourceInstaller {
     static void validateUrl(URL url) throws IOException {
         if (!"https".equalsIgnoreCase(url.getProtocol()) || !HOSTS.contains(url.getHost().toLowerCase(Locale.ROOT))
                 || (url.getPort() != -1 && url.getPort() != 443) || url.getUserInfo() != null || url.getRef() != null)
-            throw new IOException("资源下载地址不在允许的 HTTPS 域名内");
+            throw new IOException("资源Download地址不在允许的 HTTPS 域名内");
     }
     private static void validatePath(String path) {
         if (path == null || !(path.startsWith("assetpacks/") || path.startsWith("Download/"))
                 || path.indexOf('\\') >= 0 || path.indexOf(':') >= 0 || path.indexOf('\0') >= 0)
-            throw new IllegalArgumentException("非法资源路径");
+            throw new IllegalArgumentException("Invalid resource path");
         for (String part : path.split("/", -1))
-            if (part.isEmpty() || part.equals(".") || part.equals("..")) throw new IllegalArgumentException("非法资源路径");
+            if (part.isEmpty() || part.equals(".") || part.equals("..")) throw new IllegalArgumentException("Invalid resource path");
     }
     private static void validateHash(String sha) {
-        if (sha == null || !sha.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("SHA-256 格式无效");
+        if (sha == null || !sha.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("Invalid SHA-256 format");
     }
     private static MessageDigest digest() {
         try { return MessageDigest.getInstance("SHA-256"); }
@@ -807,7 +807,7 @@ public final class ResourceInstaller {
         try (InputStream input = new FileInputStream(file); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[1024]; int read;
             while ((read = input.read(buffer)) != -1) {
-                if (output.size() + read > maximum) throw new IOException("本地资源状态文件过大");
+                if (output.size() + read > maximum) throw new IOException("Local resource state file is too large");
                 output.write(buffer, 0, read);
             }
             return output.toByteArray();
@@ -829,7 +829,7 @@ public final class ResourceInstaller {
     private static void atomicWrite(File destination, byte[] bytes) throws IOException {
         File temporary = new File(destination.getParentFile(), destination.getName() + ".tmp");
         if (Files.isSymbolicLink(destination.toPath()) || Files.isSymbolicLink(temporary.toPath()))
-            throw new IOException("资源状态路径包含符号链接");
+            throw new IOException("Resource state path contains a symbolic link");
         try {
             try (FileOutputStream output = new FileOutputStream(temporary)) { output.write(bytes); output.getFD().sync(); }
             atomicMove(temporary, destination);
@@ -839,6 +839,6 @@ public final class ResourceInstaller {
         Files.move(source.toPath(), destination.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
     }
     private static void delete(File file) throws IOException {
-        if (file.exists() && !file.delete()) throw new IOException("无法清理资源临时文件：" + file.getName());
+        if (file.exists() && !file.delete()) throw new IOException("Unable to remove temporary resource file: " + file.getName());
     }
 }
