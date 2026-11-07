@@ -1,10 +1,10 @@
-# efootxi V1.2
+# Fut V1.2
 
 > **置顶声明｜开发来源与修改许可**
 >
 > efootxi 第一版基于 73@**7othree** 版本开发，已获得修改许可。后续版本由 maxlzyver 持续修改与维护。
 
-**[下载 V1.2 正式版 APK](https://github.com/maxlzyver/efootxi/releases/download/v1.2/efootxi-1.2.apk)** · [正式发布页](https://github.com/maxlzyver/efootxi/releases/tag/v1.2) · [完整更新公告](release-notes.md)
+[Fut source repository](https://github.com/VeriBotOfficial/Fut) · [完整更新公告](release-notes.md)
 
 下载安装 APK 后自动准备资源，不用手动选包、搬运或解压。完整资源准备后可离线游玩。支持 Android 12 及以上的 ARM64 手机。
 
@@ -30,7 +30,7 @@
 
 资源库托管在 GitHub，下载慢或失败时，请更换好用、稳定的梯子和更快的网络后重试。首次准备完整资源需要网络，已有下载进度会尽量保留。
 
-反馈邮箱：[lzyuan666666@gmail.com](mailto:lzyuan666666@gmail.com)。请提供机型、Android 版本、游戏版本、复现步骤和截图或录屏。启动失败请提供完整错误文字，先保留应用和存档。
+问题反馈：[GitHub Issues](https://github.com/VeriBotOfficial/Fut/issues)。请提供机型、Android 版本、游戏版本、复现步骤和截图或录屏。启动失败请提供完整错误文字，先保留应用和存档。
 
 ## 构建与维护
 
